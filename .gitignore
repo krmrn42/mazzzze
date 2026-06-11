@@ -15,3 +15,9 @@ export_credentials.cfg
 .mono/
 data_*/
 mono_crash.*.json
+
+# Editor / tooling state
+.claude/
+
+# Reference/tutorial assets, not part of this project
+3d_squash_the_creeps_starter/
