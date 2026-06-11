@@ -1,0 +1,17 @@
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/bin/Debug/maze-prototype-1.deps.json
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/bin/Debug/maze-prototype-1.runtimeconfig.json
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/bin/Debug/maze-prototype-1.dll
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/bin/Debug/maze-prototype-1.pdb
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/bin/Debug/GodotSharp.dll
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/bin/Debug/GodotSharpEditor.dll
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.csproj.AssemblyReference.cache
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.GeneratedMSBuildEditorConfig.editorconfig
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.AssemblyInfoInputs.cache
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.AssemblyInfo.cs
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.csproj.CoreCompileInputs.cache
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-pro.B09A9FE6.Up2Date
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.dll
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/refint/maze-prototype-1.dll
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.pdb
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/maze-prototype-1.genruntimeconfig.cache
+/home/user13/gamedev/maze-prototype-1/.godot/mono/temp/obj/Debug/ref/maze-prototype-1.dll

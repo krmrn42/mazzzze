@@ -1,0 +1,57 @@
+[gd_scene format=3 uid="uid://b2h0dhggdc1fn"]
+
+[ext_resource type="PackedScene" uid="uid://byfouqc6xrykn" path="res://player.tscn" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://2v71agkh6mmr" path="res://src/ChunkManager.cs" id="2_0xm2m"]
+[ext_resource type="Script" uid="uid://bp6uj1qyeera0" path="res://src/MazeData.cs" id="3_mzd"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ig7tw"]
+size = Vector3(256, 1, 256)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.3, 0.35, 0.25, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0xm2m"]
+material = SubResource("StandardMaterial3D_ground")
+size = Vector3(256, 1, 256)
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+
+[sub_resource type="Sky" id="Sky_env"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_ig7tw"]
+background_mode = 2
+sky = SubResource("Sky_env")
+ambient_light_source = 2
+ambient_light_energy = 0.3
+reflected_light_source = 1
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_0xm2m"]
+
+[node name="Main" type="Node3D" unique_id=1700941066]
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=425678503]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1954386639]
+shape = SubResource("BoxShape3D_ig7tw")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=440130314]
+mesh = SubResource("BoxMesh_0xm2m")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=509116994]
+transform = Transform3D(1, 0, 0, 0, -0.50000006, 0.8660254, 0, -0.8660254, -0.50000006, 1, 15, -1)
+light_energy = 0.8
+shadow_enabled = true
+
+[node name="MazeData" type="Node" parent="." unique_id=3490752812]
+script = ExtResource("3_mzd")
+
+[node name="Player" parent="." unique_id=1502304306 instance=ExtResource("1_ig7tw")]
+
+[node name="ChunkManager" type="Node3D" parent="." unique_id=77425718]
+script = ExtResource("2_0xm2m")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1995028696]
+environment = SubResource("Environment_ig7tw")
+camera_attributes = SubResource("CameraAttributesPractical_0xm2m")

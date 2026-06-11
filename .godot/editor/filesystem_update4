@@ -1,0 +1,7 @@
+res://MazeTiles.tres
+res://src/Mob.cs
+res://game_object.cs
+res://src/MazeData.cs
+res://src/ChunkManager.cs
+res://src/Player.cs
+res://src/Chunk.cs

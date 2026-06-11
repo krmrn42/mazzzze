@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://byfouqc6xrykn"]
+
+[ext_resource type="Script" uid="uid://cmtkmpbea07u1" path="res://src/Player.cs" id="1_onrkg"]
+[ext_resource type="PackedScene" uid="uid://d0ypm0v45pwdv" path="res://art/player.glb" id="2_i3pqv"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_hqtel"]
+radius = 0.3
+
+[node name="Player" type="CharacterBody3D" unique_id=1502304306]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_onrkg")
+
+[node name="ModelPivot" type="Node3D" parent="." unique_id=1311288925]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+
+[node name="Character" parent="ModelPivot" unique_id=1485413886 instance=ExtResource("2_i3pqv")]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=690972865]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+shape = SubResource("SphereShape3D_hqtel")
+
+[node name="CameraYaw" type="Node3D" parent="." unique_id=4116826600]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+
+[node name="CameraPitch" type="Node3D" parent="CameraYaw" unique_id=2304092418]
+
+[node name="Camera3D" type="Camera3D" parent="CameraYaw/CameraPitch" unique_id=1857523017]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2)
+current = true

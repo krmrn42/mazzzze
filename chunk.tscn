@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://d0kxtcqauypp3"]
+
+[ext_resource type="Script" uid="uid://c2wlh3vgbcf8o" path="res://src/Chunk.cs" id="1_eat54"]
+[ext_resource type="MeshLibrary" uid="uid://2rqq7e6neqn4" path="res://MazeTiles.tres" id="1_kdh3y"]
+
+[node name="Chunk" type="Node3D" unique_id=1658198991]
+script = ExtResource("1_eat54")
+
+[node name="GridMap" type="GridMap" parent="." unique_id=1358100135]
+mesh_library = ExtResource("1_kdh3y")
+cell_size = Vector3(2, 1, 2)

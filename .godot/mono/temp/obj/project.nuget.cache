@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dgSpecHash": "JTg8GVsXBbw=",
+  "success": true,
+  "projectFilePath": "/home/user13/gamedev/maze-prototype-1/maze-prototype-1.csproj",
+  "expectedPackageFiles": [
+    "/home/user13/.nuget/packages/godot.sourcegenerators/4.6.3/godot.sourcegenerators.4.6.3.nupkg.sha512",
+    "/home/user13/.nuget/packages/godotsharp/4.6.3/godotsharp.4.6.3.nupkg.sha512",
+    "/home/user13/.nuget/packages/godotsharpeditor/4.6.3/godotsharpeditor.4.6.3.nupkg.sha512",
+    "/home/user13/.nuget/packages/microsoft.netcore.app.ref/8.0.27/microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
+    "/home/user13/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.27/microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512"
+  ],
+  "logs": []
+}
