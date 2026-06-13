@@ -25,6 +25,17 @@ public partial class Player : CharacterBody3D
 	private Node3D _modelPivot;
 	private float _zoomLevel;
 
+	// Planar (XZ) world directions, for the mini-map. Facing = where the player model
+	// looks (last movement direction); CamForward = the camera's horizontal heading.
+	public Vector2 PlanarFacing
+	{
+		get { var f = -_modelPivot.GlobalBasis.Z; return new Vector2(f.X, f.Z); }
+	}
+	public Vector2 PlanarCamForward
+	{
+		get { var f = -_cameraYaw.GlobalBasis.Z; return new Vector2(f.X, f.Z); }
+	}
+
 	public override void _Ready()
 	{
 		Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -72,7 +83,8 @@ public partial class Player : CharacterBody3D
 			);
 		}
 
-		if (@event is InputEventMouseButton mb)
+		// Ctrl+wheel is reserved for mini-map zoom (handled by Minimap); plain wheel zooms the camera.
+		if (@event is InputEventMouseButton mb && !mb.CtrlPressed)
 		{
 			if (mb.ButtonIndex == MouseButton.WheelUp)
 			{

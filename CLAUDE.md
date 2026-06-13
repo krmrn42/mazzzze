@@ -104,7 +104,16 @@ Main (Node3D) — main.tscn
 
 ### Input Map
 
-WASD + arrow keys for movement, spacebar for jump. Gamepad left stick and D-pad also mapped. See `[input]` section in `project.godot`.
+WASD + arrow keys for movement, spacebar for jump, **Tab** toggles mini-map orientation. Gamepad left stick and D-pad also mapped. See `[input]` section in `project.godot`. Mouse wheel zooms the camera; **Ctrl+wheel** zooms the mini-map (Player ignores wheel while Ctrl is held).
+
+### Mini-map (`src/Minimap.cs`, `src/MinimapState.cs`)
+
+Top-left HUD overlay (`HUD` `CanvasLayer` → `Minimap` `Control` in `main.tscn`), procedurally drawn in `_Draw` — no textures. Implements `requirements/mini-map.md` (US-10/F-09/F-10/F-11). Key facts:
+- **Fog of war** (`MinimapState`): FIFO of the last 1000 entered cells; each visit reveals a 3×3 neighbourhood via reference counts, so the trail fades from the tail as the buffer fills. Entrance/exit cells are revealed permanently once entered (kept outside the FIFO) and gate their markers. In-memory only; resets each launch.
+- **Two zones**: near (Chebyshev ≤ `NearRadius` 7 → 15×15) draws per-cell floor/wall from `MazeData.IsFloor`; farther revealed cells draw as a flat schematic silhouette. Unrevealed = fog.
+- **Rotation**: whole map drawn under `DrawSetTransform` rotated so "forward" (camera heading, or world-north when Tab-toggled) is up; player arrow uses `Player.PlanarFacing`.
+- **Cell-visit detection is in `_PhysicsProcess`** (fixed 60 Hz) so no entered cell is skipped — don't move it to `_Process`.
+- **TODO (F-09):** current style is functional (flat parchment palette); the full hand-drawn parchment texture / burnt fog edges / hatched walls are deferred to a later version.
 
 ### Art Pipeline
 

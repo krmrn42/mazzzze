@@ -17,6 +17,11 @@ public partial class MazeData : Node
 	public float WorldOffsetX => -WorldWidth * CellWorldSize / 2.0f;
 	public float WorldOffsetZ => -WorldHeight * CellWorldSize / 2.0f;
 
+	// Fixed entrance/exit cells (see the special cases in IsFloor). Used by the mini-map
+	// to place the entrance/exit markers once the player has visited them.
+	public static Vector2I EntranceCell => new Vector2I(1, 0);
+	public static Vector2I ExitCell => new Vector2I(WorldWidth - 2, WorldHeight - 1);
+
 	public override void _Ready()
 	{
 		// Вход и выход фиксированы

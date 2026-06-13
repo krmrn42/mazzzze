@@ -55,11 +55,15 @@ maze-prototype-1/
 │   ├── mob_body.tres          # Enemy body material (blue)
 │   ├── mob_eye.tres           # Enemy eye material (red, emissive)
 │   └── House In a Forest Loop.ogg  # Background music
+├── requirements/             # Feature requirement docs (WHAT, not HOW)
+│   └── mini-map.md           # US-10 / F-09 / F-10 / F-11 — mini-map
 └── src/
     ├── Player.cs              # Player controller
     ├── MazeData.cs            # Maze world data & procedural generation
     ├── ChunkManager.cs        # Chunk loading/unloading orchestrator
     ├── Chunk.cs               # Single chunk - GridMap filler from cell data
+    ├── Minimap.cs             # Mini-map HUD widget (Control, procedural _Draw)
+    ├── MinimapState.cs        # Mini-map fog-of-war / exploration memory
     └── Mob.cs                 # Enemy controller (placeholder)
 ```
 
@@ -83,7 +87,9 @@ Main (Node3D)                              - main.tscn, root
 ├── ChunkManager (Node3D + ChunkManager.cs) - orchestrates chunk lifecycle
 │   └── Chunk (xN, dynamic)              - instances of chunk.tscn
 │       └── GridMap (cell_size=3.6,1,3.6, cell_center_y=false) - renders Floor/Wall tiles
-└── WorldEnvironment                      - procedural sky, ambient light
+├── WorldEnvironment                      - procedural sky, ambient light
+└── HUD (CanvasLayer)
+    └── Minimap (Control + Minimap.cs)    - top-left mini-map overlay (§5.10)
 ```
 
 ## 5. Subsystem Specifications
@@ -339,8 +345,10 @@ The +CellWorldSize/2 centres the player within the cell: with cell_center_x/z=tr
 | move_forward | W(87), UpArrow(4194377) | - | Button 3 |
 | move_back | S(83), DownArrow(4194376) | - | Button 4 |
 | jump | Space(32) | - | Button 0 |
+| minimap_toggle | Tab(4194306) | - | - |
 
-Dead zone: 0.2. Mouse captured (Input.MouseMode = Captured).
+Dead zone: 0.2 (0.5 for minimap_toggle). Mouse captured (Input.MouseMode = Captured).
+Mouse wheel zooms the camera (plain) or the mini-map (with Ctrl held) — see §5.9.
 
 ### 5.6 Ground - Floor Collision
 
@@ -400,6 +408,55 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 | art/House In a Forest Loop.ogg | OGG audio | Background music (not yet integrated) |
 
 All .blend import disabled (filesystem/import/blender/enabled=false).
+
+### 5.10 Mini-map (HUD)
+
+**Files:** `src/Minimap.cs` (`Control`), `src/MinimapState.cs` (plain class).
+**Scene:** `main.tscn` → `HUD` (`CanvasLayer`) → `Minimap` (`Control`, top-left, `mouse_filter=2/Ignore`).
+**Requirements:** `requirements/mini-map.md` (US-10, F-09, F-10, F-11).
+
+A procedurally `_Draw`-rendered overlay over the streaming maze. No textures/scenes —
+everything is drawn with `DrawCircle`/`DrawRect`/`DrawArc`/`DrawColoredPolygon`.
+
+**Exploration memory — `MinimapState`:**
+- FIFO `Queue<Vector2I>` of the last **1000** entered cells (`BufferCapacity`).
+- Each visit reveals a `(2*RevealRadius+1)²` = **3×3** neighbourhood (`RevealRadius=1`),
+  tracked by a `Dictionary<Vector2I,int>` reference count, so corridor + adjacent walls
+  become visible. When the oldest visit is evicted its 3×3 contribution is decremented and
+  the fog only re-closes over cells no longer covered by any remaining visit (trail fades
+  from the tail).
+- Entrance/exit cells, once entered, are added to a separate `_permanent` set — revealed
+  forever (kept outside the FIFO) and used to gate the entrance/exit markers
+  (`IsPermanentlyRevealed`, distinct from the neighbourhood-based `IsRevealed`).
+- Purely in-memory; recreated each launch (no persistence — save/restore is a future doc).
+
+**Widget / rendering — `Minimap`:**
+- Square, side = `ScreenWidthFraction` (0.18) × viewport width, at top-left (`Margin` 16),
+  resized every `_Process`. Drawn as a circle (parchment-toned fog disc + ink border ring).
+- Per visible cell within the circle: fog (skip) if not revealed; else **near zone**
+  (Chebyshev distance ≤ `NearRadius` = 7 ⇒ 15×15) renders per-cell floor (light) / wall
+  (dark) via `MazeData.IsFloor`; **far** revealed cells render as a flat schematic
+  silhouette colour (no per-cell detail). Cells overlap ~0.6px to hide rotation seams.
+- **Rotation:** the whole map is drawn under `DrawSetTransform(center, φ, …)`.
+  `φ = -π/2 - atan2(fwd.y, fwd.x)` maps `fwd` to screen-up. `fwd` = the player's planar
+  camera-forward (default, "forward = up") or world-north `(0,-1)` when toggled. The player
+  arrow points along `Player.PlanarFacing`; the entrance/exit arches sit at their cells.
+- **Cell-visit detection runs in `_PhysicsProcess`** (fixed 60 Hz): between ticks the player
+  moves ≤ Speed·dt ≈ 0.08 u ≪ 3.6-unit cell, so no entered cell is ever skipped. (Doing it
+  in `_Process` at render rate can skip a cell the player crosses in a couple of physics
+  ticks.) `_Process` only handles sizing + `QueueRedraw`.
+
+**Input — `_Input` (F-11):**
+- `minimap_toggle` (Tab) flips the orientation mode (camera-up ↔ north-up).
+- **Ctrl + wheel** zooms (`_cellsRadius`, the cells-from-centre-to-edge), clamped to
+  `[MinCellsRadius 5, MaxCellsRadius 28]` so you can neither bottom out on a single cell nor
+  see the whole maze. Consumes the event (`SetInputAsHandled`); `Player` additionally ignores
+  wheel events while Ctrl is held, so plain wheel still zooms the camera.
+
+> **TODO (F-09 visual style, next version):** this first pass is functional styling
+> (flat parchment palette, solid fog, simple arches). The full F-09 look — procedural
+> parchment **texture**, soft "burnt" fog edges, **hatched** walls, decorative arch icons —
+> is deferred. The behaviour above is complete and agreed as the first pass.
 
 ## 6. Physics Configuration
 
