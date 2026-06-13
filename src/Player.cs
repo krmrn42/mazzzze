@@ -10,6 +10,18 @@ public partial class Player : CharacterBody3D
 	[Export] public float MaxZoom = 14.0f;
 	[Export] public float Gravity = 15.0f;
 
+	// Имена анимаций из AnimationLibrary_Godot_Standard.glb и время кроссфейда между ними.
+	// Клип движения — "Jog_Fwd": при Speed=5 (бег по лабиринту) бег выглядит естественнее
+	// шага; ходьбу можно вернуть, поставив WalkAnim="Walk" и WalkAnimRefSpeed≈1.4.
+	[Export] public string IdleAnim = "Idle";
+	[Export] public string WalkAnim = "Jog_Fwd";
+	[Export] public float AnimBlend = 0.2f;
+	// Скорость игрока (м/с), при которой клип движения проигрывается в «родном» темпе.
+	// Клипы in-place (без root motion), поэтому темп масштабируем под фактическую скорость
+	// перемещения: speed_scale = горизонтальная_скорость / WalkAnimRefSpeed — так ноги
+	// не «скользят» по полу. Подбирается на глаз; для "Jog_Fwd" ≈ 4.0.
+	[Export] public float WalkAnimRefSpeed = 4.0f;
+
 	// Камера высоко над игроком и чуть сзади, направлена вниз под углом.
 	// Угол крутой (ближе к виду сверху): так камера остаётся в открытом «колодце»
 	// над клеткой игрока и не утыкается в боковые стены узкого коридора.
@@ -23,6 +35,7 @@ public partial class Player : CharacterBody3D
 	private Node3D _cameraPitch;
 	private ChunkManager _chunkManager;
 	private Node3D _modelPivot;
+	private AnimationPlayer _anim;
 	private float _zoomLevel;
 
 	// Planar (XZ) world directions, for the mini-map. Facing = where the player model
@@ -39,12 +52,21 @@ public partial class Player : CharacterBody3D
 	public override void _Ready()
 	{
 		Input.MouseMode = Input.MouseModeEnum.Captured;
+		// Без этого на Linux/X11 при зажатых клавишах движения авто-повтор клавиатуры
+		// «затапливает» очередь ввода, и события движения мыши копятся/теряются — камера
+		// перестаёт вращаться мышью во время ходьбы. Отключаем аккумуляцию ввода, чтобы
+		// каждое InputEventMouseMotion доставлялось сразу, и обзор работал на ходу.
+		Input.UseAccumulatedInput = false;
 
 		_camera = GetNode<Camera3D>("CameraYaw/CameraPitch/Camera3D");
 		_cameraYaw = GetNode<Node3D>("CameraYaw");
 		_cameraPitch = GetNode<Node3D>("CameraYaw/CameraPitch");
 		_modelPivot = GetNode<Node3D>("ModelPivot");
 		_chunkManager = GetNode<ChunkManager>("/root/Main/ChunkManager");
+
+		// Плеер анимаций живёт внутри инстанса glb-персонажа.
+		_anim = GetNodeOrNull<AnimationPlayer>("ModelPivot/Character/AnimationPlayer");
+		PlayAnim(IdleAnim);
 
 		_zoomLevel = _camera.Position.Z;
 
@@ -71,6 +93,14 @@ public partial class Player : CharacterBody3D
 
 	public override void _Input(InputEvent @event)
 	{
+		// Ctrl+Q — выход из игры (в редакторе Godot вернёт в студию).
+		if (@event is InputEventKey key && key.Pressed && !key.Echo
+			&& key.Keycode == Key.Q && key.CtrlPressed)
+		{
+			GetTree().Quit();
+			return;
+		}
+
 		if (@event is InputEventMouseMotion mouseMotion && Input.MouseMode == Input.MouseModeEnum.Captured)
 		{
 			_cameraYaw.RotateY(-mouseMotion.Relative.X * MouseSensitivity);
@@ -114,7 +144,8 @@ public partial class Player : CharacterBody3D
 		moveDir.Y = 0;
 		moveDir = moveDir.Normalized();
 
-		if (moveDir != Vector3.Zero)
+		bool moving = moveDir != Vector3.Zero;
+		if (moving)
 		{
 			vel.X = moveDir.X * Speed;
 			vel.Z = moveDir.Z * Speed;
@@ -126,12 +157,32 @@ public partial class Player : CharacterBody3D
 			vel.Z = 0;
 		}
 
+		// Анимация состояния: шаг при движении, ожидание на месте.
+		PlayAnim(moving ? WalkAnim : IdleAnim);
+		// Темп анимации движения подгоняем под фактическую скорость перемещения по полу,
+		// чтобы ноги/руки не отставали от тела (клипы in-place). На месте — обычный темп.
+		if (_anim != null)
+		{
+			float planarSpeed = new Vector2(vel.X, vel.Z).Length();
+			_anim.SpeedScale = moving && WalkAnimRefSpeed > 0.0f
+				? Mathf.Clamp(planarSpeed / WalkAnimRefSpeed, 0.1f, 4.0f)
+				: 1.0f;
+		}
+
 		Velocity = vel;
 		MoveAndSlide();
 
 		_chunkManager?.UpdateChunks(new Vector2(GlobalPosition.X, GlobalPosition.Z));
 
 		UpdateCameraCollision(dt);
+	}
+
+	// Запускает анимацию с кроссфейдом, если она ещё не играет (без перезапуска каждый кадр).
+	private void PlayAnim(string name)
+	{
+		if (_anim == null || string.IsNullOrEmpty(name) || _anim.CurrentAnimation == name)
+			return;
+		_anim.Play(name, AnimBlend);
 	}
 
 	// «Пружинная рука»: камера не должна проникать в стены узкого коридора.

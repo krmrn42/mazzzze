@@ -97,6 +97,7 @@ Main (Node3D) — main.tscn
 `CharacterBody3D`-based controller with camera-relative WASD movement (no jump — gravity only). Key details:
 - Movement uses `Input.GetVector()` mapped to `move_left`, `move_right`, `move_forward`, `move_back`, resolved relative to the camera yaw
 - The `ModelPivot` child rotates to face the movement direction via `Basis.LookingAt(direction)`
+- **Character model & animation**: the visible character is `art/AnimationLibrary_Godot_Standard.glb` (rigged humanoid "Mannequin" + an `AnimationPlayer` with 46 clips), instanced as `ModelPivot/Character` at scale 1.0 (≈1.83 units tall). The model's own forward is **+Z**, but `ModelPivot` is oriented with `Basis.LookingAt` (which points **−Z** at the travel direction), so the `Character` node carries a **180° Y rotation** in `player.tscn` to face it the right way — without it the player walks backward. `Player.cs` caches `ModelPivot/Character/AnimationPlayer` and cross-fades between the **`Idle`** and movement (**`Jog_Fwd`** by default) clips based on whether there's movement input (`PlayAnim` guards against restarting the current clip). The clip names and blend time are `[Export]`ed (`IdleAnim`/`WalkAnim`/`AnimBlend`) — set `WalkAnim` to `Walk`/`Sprint` for a different gait (also tune `WalkAnimRefSpeed`). **Anim speed match:** the movement clips are *in-place* (no root motion), so `_anim.SpeedScale` is set each frame to `planarSpeed / WalkAnimRefSpeed` (clamped) so the feet/arms keep pace with the body and don't foot-slide; `WalkAnimRefSpeed` (default 4.0) is the player speed at which the clip plays at native rate. `ModelPivot` sits at **Y=+0.05** so the model origin (its feet) rests on the floor surface (= the collision sphere's bottom); the earlier −0.2 left the character knee-deep in the floor.
 - **Camera**: dual-node yaw/pitch orbit rig sitting high above and slightly behind the player, angled steeply downward (default pitch −60°, clamped to [−85°, −25°]). A per-frame raycast **spring arm** shortens the camera distance when a wall would block the view of the player, so in the narrow 3.6-wide corridors the camera never clips into a wall and the player stays framed. It stays below the 30-unit wall tops, so the maze layout is never visible from above. Mouse looks; wheel zooms (desired distance 6–14).
 - **HeadLight**: an `OmniLight3D` child of the Player (Y=4, just above head) travels with the player and keeps the player, nearby floor tiles and walls clearly lit at the bottom of the deep canyons where the directional sun barely reaches.
 - **Sun & sky** (`main.tscn`): the `DirectionalLight3D` "sun" is grid-aligned at ~42° elevation ahead of the player (−Z), warm and bright (energy 2.4) with a large `light_angular_distance` (5) so its disk renders big and casts long soft shadows. The `ProceduralSkyMaterial` has a dark zenith, warm horizon glow and an enlarged sun halo, and the environment uses strong bloom (low `glow_hdr_threshold`) so that **looking down a long straight corridor you see the glowing sun disk high up at the far end** (the look of `walls.png`). A low cool sky-driven ambient fill keeps shadows readable without killing the contrast.
@@ -104,7 +105,9 @@ Main (Node3D) — main.tscn
 
 ### Input Map
 
-WASD + arrow keys for movement, spacebar for jump, **Tab** toggles mini-map orientation. Gamepad left stick and D-pad also mapped. See `[input]` section in `project.godot`. Mouse wheel zooms the camera; **Ctrl+wheel** zooms the mini-map (Player ignores wheel while Ctrl is held).
+WASD + arrow keys for movement, spacebar for jump, **Tab** toggles mini-map orientation, **Ctrl+Q** quits the game (handled in `Player._Input` → `GetTree().Quit()`; returns to the Godot editor when run from there). Gamepad left stick and D-pad also mapped. See `[input]` section in `project.godot`. Mouse wheel zooms the camera; **Ctrl+wheel** zooms the mini-map (Player ignores wheel while Ctrl is held).
+
+`Player._Ready` sets `Input.UseAccumulatedInput = false` so mouse-look keeps working **while movement keys are held** — with accumulation on (the default), held-key auto-repeat on Linux/X11 starves the queued `InputEventMouseMotion` events and the camera stops rotating mid-walk.
 
 ### Mini-map (`src/Minimap.cs`, `src/MinimapState.cs`)
 
@@ -118,7 +121,8 @@ Top-left HUD overlay (`HUD` `CanvasLayer` → `Minimap` `Control` in `main.tscn`
 ### Art Pipeline
 
 Source files are `.blend` files in `art/`. They are imported as `.glb` scenes. Materials (`.tres`) are defined separately:
-- `player.glb` — player character model with body, eye, and pupil materials
+- `AnimationLibrary_Godot_Standard.glb` — **current** player character: rigged humanoid mannequin + `AnimationPlayer` (46 clips: `Idle`, `Walk`, `Jog_Fwd`, `Sprint`, …). Used by `player.tscn`.
+- `player.glb` — old sphere-based player model (body/eye/pupil materials); no longer in any scene.
 - `mob.glb` — enemy model (not yet placed in any scene)
 - `House In a Forest Loop.ogg` — background music
 

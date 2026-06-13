@@ -45,8 +45,9 @@ maze-prototype-1/
 ├── TECH_SPEC.md               # This file
 ├── CLAUDE.md                  # Original Claude guidance (outdated)
 ├── art/
-│   ├── player.glb             # Player 3D model (GLTF binary)
-│   ├── player.blend           # Player source (Blender)
+│   ├── AnimationLibrary_Godot_Standard.glb  # Current player: rigged humanoid + 46 anim clips
+│   ├── player.glb             # Old sphere-based player model (unused)
+│   ├── player.blend           # Old player source (Blender)
 │   ├── body.tres              # Player body material (orange)
 │   ├── eye.tres               # Player eye material (white, emissive)
 │   ├── pupil.tres             # Player pupil material (black, rim)
@@ -77,8 +78,8 @@ Main (Node3D)                              - main.tscn, root
 ├── DirectionalLight3D                     - "sun", ~42 deg elevation, ahead (-Z), energy=2.4, big disk (angular_distance 5)
 ├── MazeData (Node + MazeData.cs)         - Singleton, procedural world data
 ├── Player (CharacterBody3D)              - instance of player.tscn
-│   ├── ModelPivot (Node3D, Y=0.25)       - faces movement direction
-│   │   └── Character (player.glb, scale=0.3) - 3D model
+│   ├── ModelPivot (Node3D, Y=-0.2)       - faces movement direction
+│   │   └── Character (AnimationLibrary_Godot_Standard.glb, scale=1.0) - rigged humanoid + AnimationPlayer
 │   ├── CollisionShape3D (Y=0.35)         - SphereShape3D, radius=0.3
 │   ├── HeadLight (OmniLight3D, Y=4.0)    - travels with player, lights nearby tiles/walls
 │   └── CameraYaw (Node3D, Y=2.0)         - horizontal orbit, elevated rig
@@ -281,8 +282,10 @@ The Y=+15 offset (= WallHeight/2) is critical: without it, the wall BoxMesh woul
 **Scene Hierarchy (player.tscn):**
 ```
 Player (CharacterBody3D)
-├── ModelPivot (Node3D, Y=0.25)          - faces movement direction
-│   └── Character (player.glb instance, scale=0.3)
+├── ModelPivot (Node3D, Y=-0.2)          - faces movement direction
+│   └── Character (AnimationLibrary_Godot_Standard.glb instance, scale=1.0)
+│       ├── Rig/GeneralSkeleton/Mannequin - rigged humanoid mesh
+│       └── AnimationPlayer               - 46 clips; Idle/Walk driven by Player.cs
 ├── CollisionShape3D (Y=0.35)            - SphereShape3D, radius=0.3
 ├── HeadLight (OmniLight3D, Y=4.0)       - local fill light, follows the player
 └── CameraYaw (Node3D, Y=2.0)            - mouse X: RotateY
@@ -290,12 +293,12 @@ Player (CharacterBody3D)
         └── Camera3D (Z=10, current=true) - perspective, distance auto-shortened to avoid walls
 ```
 
-**Player Model:**
-- Source: art/player.glb (GLTF binary)
-- Original bounds (3 primitives): X[-1.0..1.0], Y[-0.47..0.43], Z[-1.04..1.96]
-- Applied scale: 0.3 -> effective size approx 0.61 wide x 0.27 tall x 0.90 deep
-- ModelPivot Y offset: 0.25 - places model feet approx at floor level (Y=0)
-- Collision sphere: radius 0.3, centred at Player.Y+0.35, bottom at Player.Y+0.05
+**Player Model & Animation:**
+- Source: art/AnimationLibrary_Godot_Standard.glb (rigged humanoid "Mannequin" + AnimationPlayer with 46 clips). Replaced the old sphere-based art/player.glb.
+- Native mesh bounds (rest pose): ~1.94 wide x 1.83 tall x 0.37 deep. Applied scale: 1.0 (≈1.83 units tall — roughly human, fits the 3.6-wide corridor).
+- ModelPivot Y offset: -0.2 - drops the model so the animated feet rest on the floor (tuned visually; the Idle foot plane sits above the model origin).
+- Animation: Player.cs caches `ModelPivot/Character/AnimationPlayer` and cross-fades `Idle` <-> `Walk` (clip names + blend exported as IdleAnim/WalkAnim/AnimBlend). `PlayAnim(name)` no-ops if the clip is already current. Swap WalkAnim to `Jog_Fwd`/`Sprint` if foot-sliding appears at higher Speed.
+- Collision sphere: radius 0.3, centred at Player.Y+0.35, bottom at Player.Y+0.05 (unchanged — covers the lower body only; the tall mesh has no upper-body collider, which is fine for the narrow top-down corridors)
 
 **Camera System - Dual-Node Orbit (elevated, top-down-angled) + spring arm:**
 
@@ -396,8 +399,9 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 
 | File | Type | Purpose |
 |------|------|---------|
-| art/player.glb | GLTF binary | Player model (sphere-based character) |
-| art/player.blend | Blender source | Player model source |
+| art/AnimationLibrary_Godot_Standard.glb | GLTF binary | **Current** player: rigged humanoid + AnimationPlayer (Idle/Walk/Jog/Sprint/…) |
+| art/player.glb | GLTF binary | Old sphere-based player model (unused) |
+| art/player.blend | Blender source | Old player model source |
 | art/body.tres | SpatialMaterial | Player body - orange (#E85A00), roughness 0.5 |
 | art/eye.tres | SpatialMaterial | Player eye - white (#DBDBDB), metallic, emissive |
 | art/pupil.tres | SpatialMaterial | Player pupil - black, roughness 0.3, rim effect |

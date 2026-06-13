@@ -15,9 +15,19 @@ run/main_scene="uid://b2h0dhggdc1fn"
 config/features=PackedStringArray("4.6", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 
+[display]
+
+window/size/viewport_width=2560
+window/size/viewport_height=1440
+window/size/mode=3
+
 [dotnet]
 
 project/assembly_name="maze-prototype-1"
+
+[editor]
+
+movie_writer/movie_file="~/tmp/mazze.avi"
 
 [filesystem]
 
