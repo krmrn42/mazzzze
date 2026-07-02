@@ -1,7 +1,7 @@
-# Maze Explorer — Vision
+# Maze Explorer — Видение (Vision)
 
-> **Document type:** Vision statement.
-> **Audience:** Game designers, product owners, AI agents.
+> **Документ:** REQ-0000 · **Тип:** Видение продукта (WHAT)
+> **Аудитория:** геймдизайнеры, продакт-оунеры, AI-агенты.
 
 ---
 

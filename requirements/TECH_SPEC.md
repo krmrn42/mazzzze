@@ -42,8 +42,8 @@ maze-prototype-1/
 ├── maze-prototype-1.sln       # Solution file
 ├── icon.svg / icon.webp       # App icons
 ├── game_object.cs             # Placeholder (unused)
-├── TECH_SPEC.md               # This file
 ├── CLAUDE.md                  # Original Claude guidance (outdated)
+├── AGENTS.md                  # Compact agent instruction file (authoritative for agents)
 ├── art/
 │   ├── AnimationLibrary_Godot_Standard.glb  # Current player: rigged humanoid + 46 anim clips
 │   ├── player.glb             # Old sphere-based player model (unused)
@@ -56,8 +56,17 @@ maze-prototype-1/
 │   ├── mob_body.tres          # Enemy body material (blue)
 │   ├── mob_eye.tres           # Enemy eye material (red, emissive)
 │   └── House In a Forest Loop.ogg  # Background music
-├── requirements/             # Feature requirement docs (WHAT, not HOW)
-│   └── mini-map.md           # US-10 / F-09 / F-10 / F-11 — mini-map
+├── requirements/             # Requirements catalog (WHAT) + this TECH_SPEC (HOW)
+│   ├── README.md             # Catalog index/registry (feature → US → F-ID → status → file)
+│   ├── TECH_SPEC.md          # This file (HOW, authoritative implementation reference)
+│   ├── REQ-0000-vision.md    # Product vision
+│   ├── REQ-0001-user-journey.md  # Narrative user journey
+│   ├── REQ-0002-non-functional.md # Non-functional requirements (US-09)
+│   ├── REQ-0003-core/        # Core maze game (US-01..09, F-01..08) — IMPLEMENTED
+│   ├── REQ-0010-minimap/     # Mini-map (US-10, F-09..11) — IMPLEMENTED
+│   ├── REQ-0011-inventory/   # Inventory (US-11, F-12..14) — planned
+│   ├── REQ-0012-base-item/   # Base item entity (US-12, F-15..19a) — planned
+│   └── REQ-0013-vintage-camera/ # Vintage camera (US-13, F-20..23) — planned
 └── src/
     ├── Player.cs              # Player controller
     ├── MazeData.cs            # Maze world data & procedural generation
@@ -156,7 +165,7 @@ Returns `int[chunkSize, chunkSize]` where 0=floor, 1=wall. Iterates over the chu
 | Constant | Value | Meaning |
 |----------|-------|---------|
 | ChunkSize | 16 | Cells per chunk (16x16) |
-| LoadDistance | 1 | Chunk load radius (Manhattan): 3x3 = 9 active chunks |
+| LoadDistance | 1 | Chunk load radius (Chebyshev): 3x3 = 9 active chunks |
 
 **State:**
 
@@ -173,7 +182,7 @@ Called every frame from Player._PhysicsProcess(). Steps:
 1. Convert world position -> maze cell coordinates -> chunk coordinates
 2. Iterate chunk coords in range [center-LoadDistance, center+LoadDistance]
 3. For each not-yet-loaded chunk -> LoadChunk()
-4. Scan active chunks: if Manhattan distance > LoadDistance -> QueueFree() + remove from dict
+4. Scan active chunks: if Chebyshev distance (max of per-axis abs delta) > LoadDistance -> QueueFree() + remove from dict
 5. Print "[ChunkManager] UNLOAD ..." for each removed chunk
 
 **LoadChunk(Vector2 chunkPos) (private):**
@@ -417,7 +426,7 @@ All .blend import disabled (filesystem/import/blender/enabled=false).
 
 **Files:** `src/Minimap.cs` (`Control`), `src/MinimapState.cs` (plain class).
 **Scene:** `main.tscn` → `HUD` (`CanvasLayer`) → `Minimap` (`Control`, top-left, `mouse_filter=2/Ignore`).
-**Requirements:** `requirements/mini-map.md` (US-10, F-09, F-10, F-11).
+**Requirements:** `requirements/REQ-0010-minimap/` (US-10, F-09, F-10, F-11).
 
 A procedurally `_Draw`-rendered overlay over the streaming maze. No textures/scenes —
 everything is drawn with `DrawCircle`/`DrawRect`/`DrawArc`/`DrawColoredPolygon`.

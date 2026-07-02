@@ -1,7 +1,7 @@
-# Maze Explorer — User Journey
+# Maze Explorer — Путь игрока (User Journey)
 
-> **Document type:** Narrative design.
-> **Audience:** Game designers, product owners, AI agents.
+> **Документ:** REQ-0001 · **Тип:** Нарративный дизайн (WHAT)
+> **Аудитория:** геймдизайнеры, продакт-оунеры, AI-агенты.
 
 ---
 
