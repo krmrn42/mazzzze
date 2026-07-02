@@ -99,3 +99,40 @@ the vertical noise streaks fan out into "fur".
 - Requirements catalog in `requirements/` (index: `requirements/README.md`): WHAT in Russian,
   one `REQ-NNNN-<slug>/` folder per feature (README + facet files `NN-logic/ui/visual/input.md`
   + `design.md`). `requirements/TECH_SPEC.md` is the authoritative technical reference (HOW) in English.
+  Full rules below.
+
+## Documentation & requirements rules (MANDATORY)
+
+Binding rules. Any change that touches behaviour, input, or architecture MUST update the docs in the **same change** — docs are part of "done", not a follow-up.
+
+**Where docs live**
+- `requirements/` — the requirements catalog. Docs are in **Russian** and describe **WHAT** the game does, never HOW.
+- `requirements/TECH_SPEC.md` — the single authoritative technical reference (**HOW**), in **English**.
+- `requirements/README.md` — the registry/index: one row per feature (ID · name · US · F-ID · status · path) plus a "Связи между фичами" section. Update it whenever a feature is added, moved, or changes status.
+- `requirements/REQ-0004-keybindings.md` — a live snapshot of every working key. Update on ANY input-map or hardwired-key change.
+
+**Feature folder structure** — one folder per feature: `requirements/REQ-NNNN-<slug>/`
+- `README.md` — overview only: User Story (US-NN), acceptance criteria, an `ID → файл` map, status, related links.
+- Numbered **facet files** `NN-<facet>.md`, one concern each. Facets: `logic`, `ui`, `visual`, `input`, `data`, `animation`. Split a concern into its own file when it is distinct (e.g. keep `animation` separate from `visual`) — never cram two facets into one file.
+- `design.md` — **required**. The HOW for this feature: names the `src/*.cs` files, key decisions, and an explicit scope/limits ("границы") note. References TECH_SPEC.
+- Single-page context/meta docs may be a flat `REQ-NNNN-<slug>.md` instead of a folder (reserved low IDs 0000–0009 = core/meta).
+
+**WHAT vs HOW — do not mix**
+- Facet files and README = WHAT. No file/class/method names, no implementation mechanics. Tunable values go in a "Параметры" table (name + default + meaning), not as code.
+- `design.md` = HOW. Names the code, explains mechanics/trade-offs, and lists what is deliberately NOT implemented.
+
+**Semantic IDs are permanent anchors**
+- `US-NN` (user story) and `F-NN` (functional requirement) are referenced from code comments and TECH_SPEC. **Never renumber or reuse them.**
+- New feature → next free `REQ-NNNN` folder + `US-NN`. New functional requirement → next free `F-NN`. IDs are globally flat, not per-parent.
+
+**Sub-features nest inside their parent**
+- A requirement that refines/extends an existing feature lives in a **subfolder of that feature**, named `REQ-NNNN-<parent-slug>-<slug>` (e.g. `REQ-0012-base-item/REQ-0014-base-item-item-in-world/`). Global `NNNN` numbering stays flat. The parent README lists its sub-features. An independent feature stays top-level.
+- When you move/rename a folder, fix EVERY relative link into and out of it (paths are depth-sensitive) plus the registry, and verify no broken links remain.
+
+**Status markers** (README and registry must agree): `ℹ️` context · `🟡` planned · `✅` implemented (add "базово"/"частично" when partial). On implementing something, flip the status in the feature README AND the registry row, and record any scope cut in `design.md`.
+
+**Update checklist for any behaviour / input / architecture change**
+1. Feature docs: relevant facet(s) + README + `design.md` (incl. scope/limits) + status.
+2. `requirements/README.md` registry (row, path, "Связи").
+3. `requirements/REQ-0004-keybindings.md` — if input changed.
+4. `CLAUDE.md` **and** `AGENTS.md` — if scene tree, art pipeline, architecture, or conventions changed. Keep the two files' shared rule/architecture content in sync.

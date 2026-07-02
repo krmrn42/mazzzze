@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://2v71agkh6mmr" path="res://src/ChunkManager.cs" id="2_0xm2m"]
 [ext_resource type="Script" uid="uid://bp6uj1qyeera0" path="res://src/MazeData.cs" id="3_mzd"]
 [ext_resource type="Script" path="res://src/Minimap.cs" id="4_minimap"]
+[ext_resource type="Script" path="res://src/InventoryHud.cs" id="5_inventory"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ig7tw"]
 size = Vector3(256, 1, 256)
@@ -88,3 +89,7 @@ offset_right = 336.0
 offset_bottom = 336.0
 mouse_filter = 2
 script = ExtResource("4_minimap")
+
+[node name="Inventory" type="Control" parent="HUD"]
+mouse_filter = 2
+script = ExtResource("5_inventory")

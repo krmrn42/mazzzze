@@ -11,7 +11,7 @@
 
 Фотоаппарат — конкретный `ItemType` поверх [REQ-0012-base-item](../REQ-0012-base-item/design.md):
 - `ItemType = "vintage_camera"`, паттерн **B**, одноразовый.
-- 3D-модель в мире — `art/vintage_camera.glb` (уже в репозитории).
+- 3D-модель в мире — `art/old_kodak_camera.glb` (уже в репозитории).
 
 ## Видоискатель (F-21)
 

@@ -1,7 +1,7 @@
 # REQ-0011-inventory — Инвентарь (Рюкзак)
 
 > **Фича:** REQ-0011-inventory · **User Story:** US-11 · **Functional:** F-12, F-13, F-14
-> **Статус:** 🟡 Запланировано (не реализовано)
+> **Статус:** ✅ Реализовано (`src/InventoryHud.cs`, `src/Inventory.cs`, `src/Item.cs`)
 > **Тип документа:** обзор фичи (WHAT)
 
 ---

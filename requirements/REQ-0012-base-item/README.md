@@ -35,3 +35,14 @@
 | F-19a | Бронирование слота активированного предмета | [01-states-logic.md](./01-states-logic.md) |
 
 **Реализация (HOW):** [design.md](./design.md) · **Связано:** [REQ-0011-inventory](../REQ-0011-inventory/) — рюкзак (слоты). Конкретные предметы — [REQ-0013-vintage-camera](../REQ-0013-vintage-camera/).
+
+---
+
+## Подфичи (вложенные требования)
+
+Дополнения к базовому предмету живут в подпапках этой фичи:
+
+| ID | Подфича | F-ID | Статус | Путь |
+|----|---------|------|--------|------|
+| REQ-0014 | Предмет в мире (состояние `InWorld` + анимации) | F-24…F-25 | ✅ базово | [REQ-0014-base-item-item-in-world/](./REQ-0014-base-item-item-in-world/README.md) |
+| REQ-0015 | Выбрасывание (drop: `InInventory → InWorld`) | F-26…F-28 | ✅ | [REQ-0015-base-item-drop/](./REQ-0015-base-item-drop/README.md) |

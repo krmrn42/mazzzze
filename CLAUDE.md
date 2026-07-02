@@ -83,7 +83,8 @@ Main (Node3D)
 │   └── Chunk ×N (dynamic)                — chunk.tscn instances, each a 16×16 GridMap
 ├── WorldEnvironment                        — procedural sky + bloom
 └── HUD (CanvasLayer)
-    └── Minimap (Control)                  — top-left overlay, procedural _Draw
+    ├── Minimap (Control)                  — top-left overlay, procedural _Draw
+    └── Inventory (Control + InventoryHud.cs) — bottom-right overlay, procedural _Draw
 ```
 
 ### Maze geometry
@@ -112,9 +113,18 @@ Top-left HUD overlay, procedurally drawn — no textures. Implements `requiremen
 - **Cell-visit detection is in `_PhysicsProcess`** — do not move it to `_Process` (cells can be skipped at variable render rate).
 - Tab toggles orientation (camera-forward-up ↔ world-north-up). Ctrl+wheel zooms the map; player ignores wheel while Ctrl is held.
 
+### Inventory (`src/InventoryHud.cs`, `src/Inventory.cs`, `src/Item.cs`)
+
+Bottom-right HUD overlay, procedurally drawn like the mini-map. Implements `requirements/REQ-0011-inventory/` (US-11/F-12/F-13/F-14).
+- **`Inventory`** — 12-slot model (3 rows × 4 cols), pure data. **`Item`** — minimal item entity (`TypeId`, `DisplayName`, `Category` = Consumable/Key, `Icon`, `Use()`); a subset of REQ-0012, only what the inventory needs.
+- **`InventoryHud`** (`Control`) owns the model, draws compact (bag + "N/12") vs expanded (3×4 grid) states, and handles input in `_Input`.
+- **Item icons render a 3D model:** the seeded camera uses `art/old_kodak_camera.glb` rendered into a `SubViewport` (`OwnWorld3D`, camera auto-framed from the model AABB) → `ViewportTexture` drawn into the slot.
+- **Input**: **double-press I** toggles open/close (interval-detected in code); when open, digit **1–3** selects a row (highlight), then **1–4** selects a column and applies (`Item.Use`, flash). Game is **not paused**, mouse stays captured.
+- **Scope**: apply = pattern A (immediate use); consumables free the slot, keys persist. Pattern B (activate-to-hand / LMB), slot reservation (F-19a), 3D world items and pickup are REQ-0012 and **not implemented** — one camera is seeded directly into slot 0 in `_Ready`.
+
 ### Input map
 
-WASD / arrow keys, **Tab** (minimap orientation), **Ctrl+Q** quits, mouse look, wheel zoom, gamepad left stick. See `[input]` in `project.godot`.
+WASD / arrow keys, **Tab** (minimap orientation), **double-I** (inventory), **1–4** (inventory row/cell when open), **Ctrl+Q** quits, mouse look, wheel zoom, gamepad left stick. See `[input]` in `project.godot`.
 
 ### Art pipeline
 
@@ -123,8 +133,8 @@ Source `.blend` files live in `art/`, imported as `.glb`. Materials are separate
 | File | Status | Purpose |
 |------|--------|---------|
 | `art/AnimationLibrary_Godot_Standard.glb` | **Active** | Player: rigged humanoid + AnimationPlayer (46 clips) |
-| `art/vintage_camera.glb` | **Active** | 3D world model for the Vintage Camera item (US-13) |
-| `art/old_kodak_camera.glb` | Asset (unused in scene) | Alternate camera model candidate |
+| `art/old_kodak_camera.glb` | **Active** | 3D model for the camera item (US-13), seeded in inventory + dropped in world |
+| `art/vintage_camera.glb` | Asset (unused in scene) | Alternate camera model candidate |
 | `art/mob.glb` | Asset (unused in scene) | Enemy model; `Mob.cs` exists but no spawner |
 | `art/player.glb` | **Deprecated** | Old sphere-based player; no longer in any scene |
 | `art/House In a Forest Loop.ogg` | Asset (unused) | Background music, not yet integrated |
@@ -133,10 +143,14 @@ Source `.blend` files live in `art/`, imported as `.glb`. Materials are separate
 
 `requirements/` docs are **in Russian**. They describe WHAT the game does, not HOW. `requirements/TECH_SPEC.md` is the authoritative technical reference in English. Catalog index: `requirements/README.md` (feature → US → F-ID → status → file).
 
+Reserved low IDs (0000–0009) are core/meta docs; feature IDs match their US number (US-10 → REQ-0010):
+- `requirements/REQ-0000-vision.md`, `REQ-0001-user-journey.md`, `REQ-0002-non-functional.md` — context/vision (US-09).
+- `requirements/REQ-0003-core/` — US-01..08/F-01..08 (**the core game**: movement, camera, maze, chunking, input, visual — what all of `src/*.cs` implements). Start here to map a C# file to its requirement.
+
 Feature folders (`REQ-NNNN-<slug>/`, each with README + facet files + `design.md`):
 - `requirements/REQ-0010-minimap/` — US-10/F-09..F-11 (mini-map, implemented)
-- `requirements/REQ-0011-inventory/` — US-11/F-12..F-14 (inventory, 3×4 grid, not yet implemented)
-- `requirements/REQ-0012-base-item/` — US-12/F-15..F-19a (base item entity, shared by all items)
+- `requirements/REQ-0011-inventory/` — US-11/F-12..F-14 (inventory, 3×4 grid, implemented; pattern A only — see its `design.md` for scope)
+- `requirements/REQ-0012-base-item/` — US-12/F-15..F-19a (base item entity, shared by all items; only the inventory-facing subset exists in `Item.cs`)
 - `requirements/REQ-0013-vintage-camera/` — US-13/F-20..F-23 (vintage camera item, not yet implemented)
 
 ### Placeholder / unused code
@@ -144,6 +158,42 @@ Feature folders (`REQ-NNNN-<slug>/`, each with README + facet files + `design.md
 - `game_object.cs` — empty `Node` subclass, unused placeholder.
 - `src/Mob.cs` — enemy controller stub; `mob.tscn` exists but is never spawned.
 - `3d_squash_the_creeps_starter/` — tutorial reference assets, not part of this project.
+
+## Documentation & requirements rules (MANDATORY)
+
+Binding rules. Any change that touches behaviour, input, or architecture MUST update the docs in the **same change** — docs are part of "done", not a follow-up.
+
+**Where docs live**
+- `requirements/` — the requirements catalog. Docs are in **Russian** and describe **WHAT** the game does, never HOW.
+- `requirements/TECH_SPEC.md` — the single authoritative technical reference (**HOW**), in **English**.
+- `requirements/README.md` — the registry/index: one row per feature (ID · name · US · F-ID · status · path) plus a "Связи между фичами" section. Update it whenever a feature is added, moved, or changes status.
+- `requirements/REQ-0004-keybindings.md` — a live snapshot of every working key. Update on ANY input-map or hardwired-key change.
+
+**Feature folder structure** — one folder per feature: `requirements/REQ-NNNN-<slug>/`
+- `README.md` — overview only: User Story (US-NN), acceptance criteria, an `ID → файл` map, status, related links.
+- Numbered **facet files** `NN-<facet>.md`, one concern each. Facets: `logic`, `ui`, `visual`, `input`, `data`, `animation`. Split a concern into its own file when it is distinct (e.g. keep `animation` separate from `visual`) — never cram two facets into one file.
+- `design.md` — **required**. The HOW for this feature: names the `src/*.cs` files, key decisions, and an explicit scope/limits ("границы") note. References TECH_SPEC.
+- Single-page context/meta docs may be a flat `REQ-NNNN-<slug>.md` instead of a folder (reserved low IDs 0000–0009 = core/meta).
+
+**WHAT vs HOW — do not mix**
+- Facet files and README = WHAT. No file/class/method names, no implementation mechanics. Tunable values go in a "Параметры" table (name + default + meaning), not as code.
+- `design.md` = HOW. Names the code, explains mechanics/trade-offs, and lists what is deliberately NOT implemented.
+
+**Semantic IDs are permanent anchors**
+- `US-NN` (user story) and `F-NN` (functional requirement) are referenced from code comments and TECH_SPEC. **Never renumber or reuse them.**
+- New feature → next free `REQ-NNNN` folder + `US-NN`. New functional requirement → next free `F-NN`. IDs are globally flat, not per-parent.
+
+**Sub-features nest inside their parent**
+- A requirement that refines/extends an existing feature lives in a **subfolder of that feature**, named `REQ-NNNN-<parent-slug>-<slug>` (e.g. `REQ-0012-base-item/REQ-0014-base-item-item-in-world/`). Global `NNNN` numbering stays flat. The parent README lists its sub-features. An independent feature stays top-level.
+- When you move/rename a folder, fix EVERY relative link into and out of it (paths are depth-sensitive) plus the registry, and verify no broken links remain.
+
+**Status markers** (README and registry must agree): `ℹ️` context · `🟡` planned · `✅` implemented (add "базово"/"частично" when partial). On implementing something, flip the status in the feature README AND the registry row, and record any scope cut in `design.md`.
+
+**Update checklist for any behaviour / input / architecture change**
+1. Feature docs: relevant facet(s) + README + `design.md` (incl. scope/limits) + status.
+2. `requirements/README.md` registry (row, path, "Связи").
+3. `requirements/REQ-0004-keybindings.md` — if input changed.
+4. `CLAUDE.md` **and** `AGENTS.md` — if scene tree, art pipeline, architecture, or conventions changed. Keep the two files' shared rule/architecture content in sync.
 
 ## Critical gotchas
 
