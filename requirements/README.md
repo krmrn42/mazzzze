@@ -30,12 +30,12 @@
 | REQ-0004 | Назначения клавиш | — | — | ℹ️ справочник | [REQ-0004-keybindings.md](./REQ-0004-keybindings.md) |
 | REQ-0010 | Мини-карта | US-10 | F-09…F-11 | ✅ реализовано | [REQ-0010-minimap/](./REQ-0010-minimap/README.md) |
 | REQ-0011 | Инвентарь | US-11 | F-12…F-14 | ✅ реализовано | [REQ-0011-inventory/](./REQ-0011-inventory/README.md) |
-| REQ-0012 | Базовый предмет | US-12 | F-15…F-19a | 🟡 запланировано | [REQ-0012-base-item/](./REQ-0012-base-item/README.md) |
-| REQ-0013 | Старинный фотоаппарат | US-13 | F-20…F-23 | 🟡 запланировано | [REQ-0013-vintage-camera/](./REQ-0013-vintage-camera/README.md) |
+| REQ-0012 | Базовый предмет | US-12 | F-15…F-19a | ✅ базово реализовано | [REQ-0012-base-item/](./REQ-0012-base-item/README.md) |
+| REQ-0013 | Старинный фотоаппарат | US-13 | F-20…F-23 | ✅ реализовано | [REQ-0013-vintage-camera/](./REQ-0013-vintage-camera/README.md) |
 | REQ-0014 | Предмет в мире | US-14 | F-24…F-25 | ✅ базово реализовано | [REQ-0012-base-item/REQ-0014-base-item-item-in-world/](./REQ-0012-base-item/REQ-0014-base-item-item-in-world/README.md) |
 | REQ-0015 | Выбрасывание (drop) | US-15 | F-26…F-28 | ✅ реализовано | [REQ-0012-base-item/REQ-0015-base-item-drop/](./REQ-0012-base-item/REQ-0015-base-item-drop/README.md) |
 | REQ-0016 | Поднять (pickup) | US-16 | F-29…F-30 | ✅ реализовано | [REQ-0012-base-item/REQ-0016-base-item-pickup/](./REQ-0012-base-item/REQ-0016-base-item-pickup/README.md) |
-| REQ-0017 | Фотография | US-17 | F-31…F-34 | 🟡 запланировано | [REQ-0017-photo/](./REQ-0017-photo/README.md) |
+| REQ-0017 | Фотография | US-17 | F-31…F-34 | ✅ реализовано | [REQ-0017-photo/](./REQ-0017-photo/README.md) |
 | REQ-0018 | Интернационализация (i18n) | US-18 | F-35…F-38 | 🟡 запланировано | [REQ-0018-localization/](./REQ-0018-localization/README.md) |
 
 **Реализация (HOW):** [TECH_SPEC.md](./TECH_SPEC.md) — авторитетный технический справочник.

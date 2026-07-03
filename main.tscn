@@ -5,6 +5,8 @@
 [ext_resource type="Script" uid="uid://bp6uj1qyeera0" path="res://src/MazeData.cs" id="3_mzd"]
 [ext_resource type="Script" path="res://src/Minimap.cs" id="4_minimap"]
 [ext_resource type="Script" path="res://src/InventoryHud.cs" id="5_inventory"]
+[ext_resource type="Script" path="res://src/ViewfinderHud.cs" id="6_viewfinder"]
+[ext_resource type="Script" path="res://src/PhotoEnterHud.cs" id="7_photoenter"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ig7tw"]
 size = Vector3(256, 1, 256)
@@ -93,3 +95,11 @@ script = ExtResource("4_minimap")
 [node name="Inventory" type="Control" parent="HUD"]
 mouse_filter = 2
 script = ExtResource("5_inventory")
+
+[node name="Viewfinder" type="Control" parent="HUD"]
+mouse_filter = 2
+script = ExtResource("6_viewfinder")
+
+[node name="PhotoEnter" type="Control" parent="HUD"]
+mouse_filter = 2
+script = ExtResource("7_photoenter")

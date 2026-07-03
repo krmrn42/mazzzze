@@ -15,6 +15,7 @@ public partial class Player : CharacterBody3D
 	// шага; ходьбу можно вернуть, поставив WalkAnim="Walk" и WalkAnimRefSpeed≈1.4.
 	[Export] public string IdleAnim = "Idle";
 	[Export] public string WalkAnim = "Jog_Fwd";
+	[Export] public string PickUpAnim = "Interact"; // жест взятия предмета в руку (REQ-0012/0013/0017)
 	[Export] public float AnimBlend = 0.2f;
 	// Скорость игрока (м/с), при которой клип движения проигрывается в «родном» темпе.
 	// Клипы in-place (без root motion), поэтому темп масштабируем под фактическую скорость
@@ -37,6 +38,7 @@ public partial class Player : CharacterBody3D
 	private Node3D _modelPivot;
 	private AnimationPlayer _anim;
 	private float _zoomLevel;
+	private string _gesture; // одноразовый жест (взятие в руку), перекрывает локомоцию пока играет
 
 	// Planar (XZ) world directions, for the mini-map. Facing = where the player model
 	// looks (last movement direction); CamForward = the camera's horizontal heading.
@@ -47,6 +49,29 @@ public partial class Player : CharacterBody3D
 	public Vector2 PlanarCamForward
 	{
 		get { var f = -_cameraYaw.GlobalBasis.Z; return new Vector2(f.X, f.Z); }
+	}
+
+	// Уровень глаз для вида от первого лица (видоискатель) и лучей фокуса (REQ-0013).
+	public Vector3 EyePosition => GlobalPosition + Vector3.Up * 1.5f;
+	// Точка «над головой» и её проекция на экран — для плавающих окон камеры/фото (REQ-0013/0017).
+	public Vector3 HeadAnchor => GlobalPosition + Vector3.Up * 3.2f;
+	public Vector2 UnprojectToScreen(Vector3 world) => _camera.UnprojectPosition(world);
+	public bool IsInFrontOfCamera(Vector3 world) => !_camera.IsPositionBehind(world);
+	// Горизонтальное направление взгляда камеры (yaw-узел без наклона) — для видоискателя и фокуса.
+	public Vector3 CameraYawForward => -_cameraYaw.GlobalBasis.Z;
+	// Углы камеры (градусы) — для захвата в фотографию (F-32) и восстановления при переносе (F-33).
+	public float CameraYawDeg => Mathf.RadToDeg(_cameraYaw.Rotation.Y);
+	public float CameraPitchDeg => Mathf.RadToDeg(_cameraPitch.Rotation.X);
+
+	// Мгновенный перенос игрока в запечатлённую точку с восстановлением направления (REQ-0017 / F-33).
+	public void TeleportTo(Vector2 worldXZ, float yawDeg, float pitchDeg)
+	{
+		Position = new Vector3(worldXZ.X, 0.3f, worldXZ.Y); // на пол, как при старте игры
+		Velocity = Vector3.Zero;
+		_cameraYaw.Rotation = new Vector3(0, Mathf.DegToRad(yawDeg), 0);
+		_cameraPitch.Rotation = new Vector3(Mathf.DegToRad(pitchDeg), 0, 0);
+		_chunkManager?.UpdateChunks(new Vector2(Position.X, Position.Z));
+		GD.Print($"[Player] Teleport → world=({Position.X:F1}, {Position.Z:F1}) yaw={yawDeg:F0} pitch={pitchDeg:F0}");
 	}
 
 	public override void _Ready()
@@ -157,16 +182,28 @@ public partial class Player : CharacterBody3D
 			vel.Z = 0;
 		}
 
-		// Анимация состояния: шаг при движении, ожидание на месте.
-		PlayAnim(moving ? WalkAnim : IdleAnim);
-		// Темп анимации движения подгоняем под фактическую скорость перемещения по полу,
-		// чтобы ноги/руки не отставали от тела (клипы in-place). На месте — обычный темп.
-		if (_anim != null)
+		// Жест взятия в руку (одноразовый) перекрывает локомоцию, пока проигрывается.
+		if (_gesture != null)
 		{
-			float planarSpeed = new Vector2(vel.X, vel.Z).Length();
-			_anim.SpeedScale = moving && WalkAnimRefSpeed > 0.0f
-				? Mathf.Clamp(planarSpeed / WalkAnimRefSpeed, 0.1f, 4.0f)
-				: 1.0f;
+			if (_anim != null && _anim.CurrentAnimation == _gesture && _anim.IsPlaying())
+				_anim.SpeedScale = 1.0f;
+			else
+				_gesture = null;
+		}
+
+		// Анимация состояния: шаг при движении, ожидание на месте (если не играет жест).
+		if (_gesture == null)
+		{
+			PlayAnim(moving ? WalkAnim : IdleAnim);
+			// Темп анимации движения подгоняем под фактическую скорость перемещения по полу,
+			// чтобы ноги/руки не отставали от тела (клипы in-place). На месте — обычный темп.
+			if (_anim != null)
+			{
+				float planarSpeed = new Vector2(vel.X, vel.Z).Length();
+				_anim.SpeedScale = moving && WalkAnimRefSpeed > 0.0f
+					? Mathf.Clamp(planarSpeed / WalkAnimRefSpeed, 0.1f, 4.0f)
+					: 1.0f;
+			}
 		}
 
 		Velocity = vel;
@@ -183,6 +220,18 @@ public partial class Player : CharacterBody3D
 		if (_anim == null || string.IsNullOrEmpty(name) || _anim.CurrentAnimation == name)
 			return;
 		_anim.Play(name, AnimBlend);
+	}
+
+	// Проигрывает одноразовый жест взятия предмета в руку (перекрывает локомоцию до конца клипа).
+	public void PlayPickupGesture() => PlayGesture(PickUpAnim);
+
+	private void PlayGesture(string name)
+	{
+		if (_anim == null || string.IsNullOrEmpty(name) || !_anim.HasAnimation(name))
+			return;
+		_anim.Play(name, AnimBlend);
+		_anim.SpeedScale = 1.0f;
+		_gesture = name;
 	}
 
 	// «Пружинная рука»: камера не должна проникать в стены узкого коридора.

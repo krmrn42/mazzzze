@@ -64,9 +64,14 @@ maze-prototype-1/
 │   ├── REQ-0002-non-functional.md # Non-functional requirements (US-09)
 │   ├── REQ-0003-core/        # Core maze game (US-01..09, F-01..08) — IMPLEMENTED
 │   ├── REQ-0010-minimap/     # Mini-map (US-10, F-09..11) — IMPLEMENTED
-│   ├── REQ-0011-inventory/   # Inventory (US-11, F-12..14) — planned
-│   ├── REQ-0012-base-item/   # Base item entity (US-12, F-15..19a) — planned
-│   └── REQ-0013-vintage-camera/ # Vintage camera (US-13, F-20..23) — planned
+│   ├── REQ-0011-inventory/   # Inventory (US-11, F-12..14) — IMPLEMENTED
+│   ├── REQ-0012-base-item/   # Base item entity (US-12, F-15..19a) — IMPLEMENTED (base)
+│   │   ├── REQ-0014-base-item-item-in-world/  # InWorld state (F-24..25)
+│   │   ├── REQ-0015-base-item-drop/           # Drop (F-26..28)
+│   │   └── REQ-0016-base-item-pickup/         # Pickup (F-29..30)
+│   ├── REQ-0013-vintage-camera/ # Vintage camera (US-13, F-20..23) — IMPLEMENTED
+│   ├── REQ-0017-photo/       # Photo portal item (US-17, F-31..34) — IMPLEMENTED
+│   └── REQ-0018-localization/ # i18n (US-18, F-35..38) — planned
 └── src/
     ├── Player.cs              # Player controller
     ├── MazeData.cs            # Maze world data & procedural generation
@@ -74,6 +79,16 @@ maze-prototype-1/
     ├── Chunk.cs               # Single chunk - GridMap filler from cell data
     ├── Minimap.cs             # Mini-map HUD widget (Control, procedural _Draw)
     ├── MinimapState.cs        # Mini-map fog-of-war / exploration memory
+    ├── Inventory.cs           # 12-slot backpack data model
+    ├── Item.cs                # Item entity (data) + BuildModel factory; ItemUsage A/B
+    ├── PhotoItem.cs           # Photo subclass: captured pos/yaw/pitch + procedural polaroid
+    ├── InventoryHud.cs        # Item system hub (Control): states, transitions, input, draw
+    ├── WorldItem.cs           # InWorld item representation + registry
+    ├── DropProjectile.cs      # Drop star (inventory → world)
+    ├── PickupProjectile.cs    # Pickup star (world → inventory)
+    ├── ItemStar.cs            # Shared emissive star visual
+    ├── ViewfinderHud.cs       # Vintage-camera viewfinder + timer + focus (Control)
+    ├── PhotoEnterHud.cs       # Photo walk-into progress vignette + teleport flash (Control)
     └── Mob.cs                 # Enemy controller (placeholder)
 ```
 
@@ -99,7 +114,10 @@ Main (Node3D)                              - main.tscn, root
 │       └── GridMap (cell_size=3.6,1,3.6, cell_center_y=false) - renders Floor/Wall tiles
 ├── WorldEnvironment                      - procedural sky, ambient light
 └── HUD (CanvasLayer)
-    └── Minimap (Control + Minimap.cs)    - top-left mini-map overlay (§5.10)
+    ├── Minimap (Control + Minimap.cs)    - top-left mini-map overlay (§5.10)
+    ├── Inventory (Control + InventoryHud.cs) - bottom-right inventory + item-system hub (§5.11)
+    ├── Viewfinder (Control + ViewfinderHud.cs) - camera viewfinder overlay (§5.11)
+    └── PhotoEnter (Control + PhotoEnterHud.cs) - photo walk-into vignette/flash (§5.11)
 ```
 
 ## 5. Subsystem Specifications
@@ -470,6 +488,54 @@ everything is drawn with `DrawCircle`/`DrawRect`/`DrawArc`/`DrawColoredPolygon`.
 > (flat parchment palette, solid fog, simple arches). The full F-09 look — procedural
 > parchment **texture**, soft "burnt" fog edges, **hatched** walls, decorative arch icons —
 > is deferred. The behaviour above is complete and agreed as the first pass.
+
+### 5.11 Item System (Inventory · Item · Camera · Photo)
+
+**Files:** `src/Inventory.cs` (12-slot data), `src/Item.cs` (+`PhotoItem.cs` subclass),
+`src/InventoryHud.cs` (hub `Control`), `src/WorldItem.cs`, `src/DropProjectile.cs`,
+`src/PickupProjectile.cs`, `src/ItemStar.cs`, `src/ViewfinderHud.cs`, `src/PhotoEnterHud.cs`.
+**Scene:** `HUD` (`CanvasLayer`) → `Inventory`, `Viewfinder`, `PhotoEnter` (`Control`s).
+**Requirements:** `requirements/REQ-0011-inventory/`, `requirements/REQ-0012-base-item/`
+(+ sub-features REQ-0014/0015/0016), `REQ-0013-vintage-camera/`, `REQ-0017-photo/`.
+
+**States (no state field — location implies state):** *InWorld* = a `WorldItem` in the
+`WorldItem.All` registry; *InInventory* = an `Item` in an `Inventory` slot; *Activated* =
+still in its slot **and** referenced by `InventoryHud._activatedItem`/`_reservedSlot`, which
+blocks the slot (reservation, F-19a). Transitions live in `InventoryHud`
+(`ActivateSlot`/`Deactivate`/`DropActivated`/`ConsumeActivated`/`ApplySlot`/`StartPickup`/
+`DropSlot`). See [REQ-0012 design.md](./REQ-0012-base-item/design.md).
+
+**Usage patterns (F-18):** `Item.Usage` = `ImmediateA` (`Item.Use()` from the grid) or
+`ActivatedB` (into hand, then a second gesture). Selecting a cell activates B-items and
+toggles deactivation on the reserved cell; `use_activated` (LMB) drives the camera.
+
+**Item model / icons:** `Item.BuildModel()` is a virtual factory (glb by `ModelPath`, or a
+procedural node — `PhotoItem` overrides it with a placeholder polaroid). Both slot icons
+(`InventoryHud.BuildIcon`, rendered via a per-item `SubViewport`→`ViewportTexture`) and the
+in-world model (`WorldItem.Setup`) call it. In-world size = `WorldItemSizeFraction` (0.25) ×
+`PlayerHeight`.
+
+Activation plays a one-shot pickup gesture via `Player.PlayPickupGesture()` (the `Interact`
+clip, `PickUpAnim`), which overrides locomotion until it finishes.
+
+**Vintage camera (REQ-0013):** `ViewfinderHud` runs a `Phase{Inactive,Blocked,Counting}` FSM
+in `_PhysicsProcess`. It draws a framed **window above the player's head** (screen-projected
+`Player.HeadAnchor`; **third-person view kept, no darken**) containing a `SubViewport`
+(`World3D = player.GetWorld3D()`) + eye-level `Camera3D` rendering a **horizontal (level, yaw)**
+lens view. Focus (F-23) = a forward horizontal ray, min `FocusMinDistance` 1.8 (3×0.6); blocked
+before start or lost mid-count resets without consuming. Timer (F-22) 3→2→1 at `TickSeconds` 2.
+Mouse pitch stays free (third-person). On fire → `InventoryHud.OnCameraFired` builds a
+`PhotoItem` and `ConsumeActivated`s the camera into its reserved slot.
+
+**Photo (REQ-0017):** `PhotoItem` stores immutable `CapturedWorldPos` (XZ), `CapturedYawDeg`,
+`CapturedPitchDeg` (the main top-down camera's pitch, so the normal view is preserved after
+teleport). Activating it opens `PhotoEnterHud.BeginPreview`: a `SubViewport` `Camera3D` parked at
+`CapturedWorldPos`/yaw renders that location **live** (a passing monster shows) in a window above
+the head. `InventoryHud.UpdatePhotoEnter` accumulates progress while the photo is activated,
+`move_forward` is held, and `Velocity·PlanarCamForward > Speed*0.4` (real advance, not wall-
+blocked); the window **grows** toward centre. At `EnterDuration` 2 s → `Player.TeleportTo(pos,
+yaw, pitch)` (stands on floor at Y=0.3, re-streams chunks), `PhotoEnterHud.Flash()` (sepia),
+`ConsumeActivated(null)`. Live preview is limited to currently-streamed chunks.
 
 ## 6. Physics Configuration
 

@@ -84,7 +84,9 @@ Main (Node3D)
 ├── WorldEnvironment                        — procedural sky + bloom
 └── HUD (CanvasLayer)
     ├── Minimap (Control)                  — top-left overlay, procedural _Draw
-    └── Inventory (Control + InventoryHud.cs) — bottom-right overlay, procedural _Draw
+    ├── Inventory (Control + InventoryHud.cs) — bottom-right overlay, procedural _Draw
+    ├── Viewfinder (Control + ViewfinderHud.cs) — camera viewfinder overlay (hidden until use)
+    └── PhotoEnter (Control + PhotoEnterHud.cs) — photo walk-into vignette/flash overlay
 ```
 
 ### Maze geometry
@@ -101,7 +103,7 @@ Main (Node3D)
 - Camera-relative WASD movement via `Input.GetVector()`. No jump; gravity only.
 - **Dual-node orbit camera**: `CameraYaw` (mouse X) → `CameraPitch` (mouse Y, clamped [−85°, −25°]) → `Camera3D`. Spring-arm raycast shortens the camera distance each physics frame to avoid wall clips.
 - **HeadLight** (OmniLight3D, Y=4) travels with the player for fill light at the canyon floor.
-- Animation: `ModelPivot/Character/AnimationPlayer` cross-fades `Idle` ↔ `Jog_Fwd`; speed-scaled by `planarSpeed / WalkAnimRefSpeed` to match foot pace.
+- Animation: `ModelPivot/Character/AnimationPlayer` cross-fades `Idle` ↔ `Jog_Fwd`; speed-scaled by `planarSpeed / WalkAnimRefSpeed` to match foot pace. `PlayPickupGesture()` plays a one-shot clip (`PickUpAnim` = `Interact`) that overrides locomotion until it finishes (used on item activation).
 - **Character model forward is +Z** but `Basis.LookingAt` points −Z at the target, so `player.tscn` carries a **180° Y rotation on the Character node** — without it the player walks backward.
 - Exported: `Speed` (5.0), `MouseSensitivity`, `Gravity` (15.0), zoom (`MinZoom`/`MaxZoom`/`ZoomStep`), pitch (`DefaultPitchDeg`/`MinPitchDeg`/`MaxPitchDeg`), anim clip names (`IdleAnim`/`WalkAnim`/`WalkAnimRefSpeed`/`AnimBlend`).
 
@@ -113,20 +115,23 @@ Top-left HUD overlay, procedurally drawn — no textures. Implements `requiremen
 - **Cell-visit detection is in `_PhysicsProcess`** — do not move it to `_Process` (cells can be skipped at variable render rate).
 - Tab toggles orientation (camera-forward-up ↔ world-north-up). Ctrl+wheel zooms the map; player ignores wheel while Ctrl is held.
 
-### Item system (inventory · drop · world item · pickup)
+### Item system (inventory · drop · world item · pickup · activation · camera · photo)
 
-`InventoryHud` (`Control`, HUD bottom-right) is the hub; procedurally drawn like the mini-map.
-- **`Inventory` / `Item`** — 12-slot model (3×4, pure data) and a minimal item entity (`TypeId`, `DisplayName`, `Category` = Consumable/Key, `ModelPath`, `Icon`, `Use()`). A subset of REQ-0012 (`requirements/REQ-0012-base-item/`); one camera is seeded into slot 0 in `_Ready`.
-- **Inventory HUD** (REQ-0011, US-11): compact (bag + "N/12") vs expanded (3×4 grid). **double-I** toggles; when open, digit **1–3** picks a row then **1–4** a column → apply (`Item.Use`, pattern A). Game **not paused**, mouse stays captured.
-- **Item icons render the 3D model:** the item's `ModelPath` glb is rendered in a `SubViewport` (`OwnWorld3D`, camera auto-framed from the model AABB) → `ViewportTexture` drawn into the slot.
-- **Drop** (`REQ-0015-base-item-drop`, US-15): **Shift+column** or **G** → `DropProjectile` (a glowing parabolic "star") flies out and lands as a **`WorldItem`** on the floor (glb scaled to 1/8 player height).
-- **Pickup** (`REQ-0016-base-item-pickup`, US-16): **automatic, no key** — `InventoryHud._PhysicsProcess` scans `WorldItem.All` for the nearest *armed* item within `PickupRange` with clear line-of-sight (raycast, mask 1), inventory not full. `PickupProjectile` flies the star back to the player; the slot fills with a flash. A `WorldItem` **arms** only after the player has once been outside its radius (prevents instantly re-grabbing a just-dropped item).
-- **Shared:** `ItemStar` builds the identical emissive star for both projectiles. `WorldItem` keeps a static registry (`All`) and holds its `Item` so pickup restores it.
-- **Not implemented:** Pattern B (activate-to-hand / LMB), slot reservation (F-19a).
+`InventoryHud` (`Control`, HUD bottom-right) is the hub; procedurally drawn like the mini-map. It owns the item **state machine** (InWorld / InInventory / Activated) — see `requirements/REQ-0012-base-item/design.md`.
+- **`Inventory` / `Item`** — 12-slot model (3×4, pure data) and an item entity (`TypeId`, `DisplayName`, `Category` = Consumable/Key, `Usage` = ImmediateA/ActivatedB, `ModelPath`, `Icon`, `Use()`, `virtual BuildModel()`). A camera (Usage=ActivatedB) is seeded into slot 0 in `_Ready`. `PhotoItem : Item` adds captured pos/yaw/pitch and a procedural polaroid `BuildModel()`.
+- **Inventory HUD** (REQ-0011, US-11): compact (bag + "N/12") vs expanded (3×4 grid). **single I** toggles; when open, digit **1–3** picks a row then **1–4** a column. On a cell: pattern-A → `Item.Use`; pattern-B → **activate into hand** (toggle to deactivate; plays `Player.PlayPickupGesture()` = the `Interact` clip). Game **not paused**, mouse stays captured. Slot-icon camera is tightly framed (FOV 30) so the model fills the cell.
+- **Item icons / world models:** `Item.BuildModel()` (glb by `ModelPath`, or procedural for `PhotoItem`) is rendered in a `SubViewport` (`OwnWorld3D`, camera auto-framed from AABB) → `ViewportTexture` for the slot; `WorldItem.Setup` uses the same factory. In-world scale = `WorldItemSizeFraction` (**0.25**) × player height.
+- **Drop** (`REQ-0015-base-item-drop`, US-15): **Shift+column** or **G** → `DropProjectile` ("star") lands as a **`WorldItem`** on the floor.
+- **Pickup** (`REQ-0016-base-item-pickup`, US-16): **automatic** — `InventoryHud._PhysicsProcess` scans `WorldItem.All` for the nearest *armed* item within `PickupRange`, clear line-of-sight (raycast, mask 1), inventory not full. `PickupProjectile` flies it back. Items **arm** only after the player has once left their radius.
+- **Activation / reservation** (F-18/B, F-19a): a pattern-B item stays in its slot but is flagged `_activatedItem`/`_reservedSlot` → the slot is blocked. `ActivateSlot`/`Deactivate`/`DropActivated`/`ConsumeActivated(replacement)` are the transitions; exclusivity = one activated item.
+- **Vintage camera** (`REQ-0013-vintage-camera`, US-13): **LMB** (`use_activated`) on the activated camera opens `ViewfinderHud` — a framed **window above the player's head** (third-person view kept, **no darken**) showing a `SubViewport` first-person **level/yaw** lens view (shared `World3D`), with sepia + vignette + countdown 3→2→1 (`TickSeconds` 2). Focus check = forward horizontal ray, min 1.8 (3×0.6); blocked-before or lost-during resets without consuming. Mouse pitch stays free (third-person). On fire → `PhotoItem` created into the reserved slot, camera destroyed.
+- **Photo** (`REQ-0017-photo`, US-17): activated photo shows a **live window above the head** (`PhotoEnterHud` — a `SubViewport` camera parked at `CapturedWorldPos`/yaw, so a monster passing there shows live). Walking forward teleports: `UpdatePhotoEnter` accrues progress while `move_forward` held and actually advancing (`Velocity·camForward > Speed*0.4`), the window **grows** toward centre; at `EnterDuration` 2 s → `Player.TeleportTo(pos, yaw, pitch)` (main top-down pitch preserved), sepia flash, photo consumed. Live view is limited to currently-streamed chunks.
+- **Shared:** `ItemStar` builds the emissive star for both projectiles. `WorldItem` keeps a static registry (`All`) and holds its `Item` so pickup restores it.
+- **Not implemented:** `Item` is a plain class (no `Resource`/`.tres` type registry); no serialization; no large edge-screen activated indicator (compact badge only); photo icon is a shared placeholder (no captured-view thumbnail).
 
 ### Input map
 
-WASD / arrow keys, **Tab** (minimap orientation), **double-I** (inventory), **1–4** (inventory row/cell), **Shift+1–4 / G** (drop), **Ctrl+Q** quits, mouse look, wheel zoom, gamepad left stick. Pickup is automatic (no key). See `[input]` in `project.godot`.
+WASD / arrow keys, **Tab** (minimap orientation), **I** (inventory, single press), **1–4** (inventory row/cell → apply/activate), **Shift+1–4** (drop, incl. drop-activated on the reserved cell), **G** (drop cursor slot), **LMB** (`use_activated` — use activated camera), **hold W/↑** (walk into activated photo), **Ctrl+Q** quits, mouse look, wheel zoom, gamepad left stick. Pickup is automatic (no key). See `[input]` in `project.godot`.
 
 ### Art pipeline
 
@@ -151,9 +156,10 @@ Reserved low IDs (0000–0009) are core/meta docs; feature IDs match their US nu
 
 Feature folders (`REQ-NNNN-<slug>/`, each with README + facet files + `design.md`):
 - `requirements/REQ-0010-minimap/` — US-10/F-09..F-11 (mini-map, implemented)
-- `requirements/REQ-0011-inventory/` — US-11/F-12..F-14 (inventory, 3×4 grid, implemented; pattern A only — see its `design.md` for scope)
-- `requirements/REQ-0012-base-item/` — US-12/F-15..F-19a (base item entity, shared by all items; only the inventory-facing subset exists in `Item.cs`)
-- `requirements/REQ-0013-vintage-camera/` — US-13/F-20..F-23 (vintage camera item, not yet implemented)
+- `requirements/REQ-0011-inventory/` — US-11/F-12..F-14 (inventory, 3×4 grid, implemented)
+- `requirements/REQ-0012-base-item/` — US-12/F-15..F-19a (base item entity; implemented base — 3 states, patterns A/B, slot reservation; see `design.md` for scope). Sub-features: REQ-0014 (in-world), REQ-0015 (drop), REQ-0016 (pickup)
+- `requirements/REQ-0013-vintage-camera/` — US-13/F-20..F-23 (vintage camera: activation, viewfinder, timer, focus — implemented)
+- `requirements/REQ-0017-photo/` — US-17/F-31..F-34 (photo portal item: capture, activation, walk-into teleport — implemented)
 
 ### Placeholder / unused code
 

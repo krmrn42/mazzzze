@@ -16,14 +16,18 @@ using System.Collections.Generic;
 // Игра при открытии НЕ ставится на паузу, мышь остаётся захваченной, управление
 // цифровое (ввод по клику в углу — отложен, т.к. курсор захвачен во время игры).
 //
-// Применение делегируется предмету (Item.Use, паттерн A / F-18). Выброс (REQ-0015)
+// Применение паттерна A делегируется предмету (Item.Use, F-18). Выброс (REQ-0015)
 // создаёт летящую звёздочку (DropProjectile) → предмет в мире (WorldItem, REQ-0014).
 // Подбор (REQ-0016) — обратный переход: автоматически, когда игрок близко к предмету
 // с прямой видимостью; PickupProjectile летит от предмета к игроку, предмет ложится в слот.
-// Активация в руку (F-18/B) и бронь слота (F-19a) — вне этой задачи.
+//
+// Паттерн B (F-18/B, F-19a): выбор ячейки с предметом Usage=ActivatedB берёт его «в руку»
+// (Activated), слот бронируется; повторный выбор — деактивация. ЛКМ по активированному
+// фотоаппарату (REQ-0013) открывает видоискатель (ViewfinderHud) → создаёт фотографию
+// (PhotoItem) в забронированном слоте. Активированная фотография (REQ-0017) переносит
+// игрока «входом вперёд» (UpdatePhotoEnter). Эксклюзивность активации — один предмет.
 public partial class InventoryHud : Control
 {
-	[Export] public float DoublePressWindow = 0.4f; // окно двойного нажатия I, сек
 	[Export] public float Margin = 16.0f;
 	[Export] public float CellSize = 72.0f;
 	[Export] public float CellGap = 8.0f;
@@ -34,7 +38,7 @@ public partial class InventoryHud : Control
 	// Конфигурация выброса (REQ-0015 / REQ-0014).
 	[Export] public float DropDistanceBodies = 3.0f;    // дальность в «корпусах» игрока
 	[Export] public float PlayerBodyDiameter = 0.6f;    // эталон «корпуса»
-	[Export] public float WorldItemSizeFraction = 0.125f; // 1/8 роста игрока
+	[Export] public float WorldItemSizeFraction = 0.25f; // 1/4 роста игрока (модель в мире)
 	[Export] public float PlayerHeight = 1.8f;          // эталон роста
 	[Export] public float DropFlightDuration = 0.6f;    // время полёта звёздочки, сек
 	[Export] public float DropArcHeight = 1.2f;         // высота параболы, м
@@ -43,6 +47,9 @@ public partial class InventoryHud : Control
 	[Export] public float PickupRange = 1.1f;           // радиус срабатывания подбора, м
 	[Export] public float PickupArcHeight = 1.0f;       // высота параболы обратной звезды, м
 	[Export] public float PickupFlightDuration = 0.6f;  // время полёта звёздочки к игроку, сек
+
+	// Вход в фотографию (REQ-0017 / F-33): сколько секунд идти вперёд для переноса.
+	[Export] public float EnterDuration = 2.0f;
 
 	// Палитра в тон миникарте (тёплый пергамент).
 	private static readonly Color PanelBg      = new(0.10f, 0.08f, 0.06f, 0.85f);
@@ -56,40 +63,49 @@ public partial class InventoryHud : Control
 	private static readonly Color ConsumableDot= new(0.35f, 0.75f, 0.35f);
 	private static readonly Color KeyDot       = new(0.90f, 0.72f, 0.25f);
 	private static readonly Color FlashColor   = new(1.0f, 0.97f, 0.85f);
+	private static readonly Color HandColor    = new(0.45f, 0.78f, 1.0f); // «в руке» (активирован)
 
 	private readonly Inventory _inv = new();
 
 	private bool _open;
 	private int _selectedRow = -1;    // -1 = ряд ещё не выбран
 	private int _cursorSlot = -1;     // последняя выбранная ячейка (курсор для drop по G)
-	private double _lastIPressSec = -1.0;
 
 	private int _flashSlot = -1;      // ячейка, которую сейчас «вспыхиваем»
 	private float _flashT;            // 1 → 0
 
 	private readonly HashSet<int> _incomingSlots = new(); // слоты с «летящим» предметом (pickup)
 
+	// Активация в руку (F-18/B) и бронь слота (F-19a).
+	private Item _activatedItem;      // предмет «в руке», или null
+	private int _reservedSlot = -1;   // забронированный слот активированного предмета
+	private float _enterProgress;     // прогресс входа в фотографию, сек (REQ-0017 / F-33)
+
 	private SubViewport _iconViewport;
 	private Player _player;
+	private ViewfinderHud _viewfinder;
+	private PhotoEnterHud _photoEnter;
 
 	public override void _Ready()
 	{
 		MouseFilter = MouseFilterEnum.Ignore; // не перехватываем клики у игры
 		_player = GetNodeOrNull<Player>("/root/Main/Player");
+		_viewfinder = GetNodeOrNull<ViewfinderHud>("../Viewfinder");
+		_photoEnter = GetNodeOrNull<PhotoEnterHud>("../PhotoEnter");
 		// Радиус «взвода» чуть больше радиуса подбора — гистерезис (REQ-0016 / F-29).
 		WorldItem.ArmingRadius = PickupRange + 0.4f;
 
-		// Засев: один предмет — «Старинный фотоаппарат» (используем только glb-модель
-		// из REQ-0013; сама механика фотоаппарата не реализуется).
+		// Засев: один предмет — «Старинный фотоаппарат» (REQ-0013). Паттерн B: активируется
+		// в руку, использование (ЛКМ) открывает видоискатель и создаёт фотографию.
 		var camera = new Item("vintage_camera", "Старинный фотоаппарат", ItemCategory.Key,
-			"res://art/old_kodak_camera.glb");
-		camera.Icon = BuildIcon(camera.ModelPath);
+			"res://art/old_kodak_camera.glb", ItemUsage.ActivatedB);
+		camera.Icon = BuildIcon(camera);
 		_inv.PutAt(0, camera);
 		GD.Print($"[Inventory] Seeded {_inv.Count}/{Inventory.Capacity} items");
 	}
 
-	// Рендерит glb-модель в текстуру для иконки слота.
-	private Texture2D BuildIcon(string modelPath)
+	// Рендерит модель предмета в текстуру для иконки слота (glb или процедурную — BuildModel).
+	private Texture2D BuildIcon(Item item)
 	{
 		_iconViewport = new SubViewport
 		{
@@ -100,7 +116,7 @@ public partial class InventoryHud : Control
 		};
 		AddChild(_iconViewport);
 
-		var model = GD.Load<PackedScene>(modelPath).Instantiate<Node3D>();
+		var model = item.BuildModel();
 		_iconViewport.AddChild(model);
 
 		var key = new DirectionalLight3D { LightEnergy = 1.6f };
@@ -124,26 +140,36 @@ public partial class InventoryHud : Control
 		Aabb bounds = WorldItem.ComputeSceneAabb(model);
 		Vector3 center = bounds.Position + bounds.Size * 0.5f;
 		float radius = Mathf.Max(bounds.Size.Length() * 0.5f, 0.01f);
-		Vector3 dir = new Vector3(0.7f, 0.55f, 1.0f).Normalized();
-		cam.Position = center + dir * radius * 1.8f;
+		Vector3 dir = new Vector3(0.6f, 0.45f, 1.0f).Normalized();
+		// Плотная посадка: модель почти заполняет ячейку (на 2K иконки были мелкими).
+		cam.Fov = 30.0f;
+		cam.Position = center + dir * radius * 3.4f;
 		cam.LookAt(center, Vector3.Up);
 	}
 
 	public override void _Input(InputEvent @event)
 	{
-		// Двойное нажатие I — открыть/закрыть (F-14).
+		// ЛКМ — использовать активированный фотоаппарат: открыть видоискатель (REQ-0013 / F-21).
+		// Повторная ЛКМ во время видоискателя игнорируется. Фотография на ЛКМ не реагирует.
+		if (@event.IsActionPressed("use_activated"))
+		{
+			if (_activatedItem != null && _activatedItem.TypeId == "vintage_camera"
+				&& _viewfinder != null && !_viewfinder.Active)
+			{
+				_viewfinder.Begin(_player, OnCameraFired);
+				GetViewport().SetInputAsHandled();
+			}
+			return;
+		}
+
+		// Во время видоискателя инвентарь и цифровой ввод заблокированы (F-21).
+		if (_viewfinder != null && _viewfinder.Active)
+			return;
+
+		// Нажатие I — открыть/закрыть (F-14).
 		if (@event.IsActionPressed("inventory_toggle"))
 		{
-			double now = Time.GetTicksMsec() / 1000.0;
-			if (_lastIPressSec >= 0 && now - _lastIPressSec <= DoublePressWindow)
-			{
-				Toggle();
-				_lastIPressSec = -1.0; // сброс, чтобы тройное нажатие не переключало снова
-			}
-			else
-			{
-				_lastIPressSec = now;
-			}
+			Toggle();
 			GetViewport().SetInputAsHandled();
 			return;
 		}
@@ -201,9 +227,25 @@ public partial class InventoryHud : Control
 		_cursorSlot = slot; // курсор остаётся на выбранной ячейке
 
 		if (shift)
-			DropSlot(slot);
+		{
+			// Выброс: активированный предмет — как drop activated (Activated → InWorld).
+			if (slot == _reservedSlot)
+				DropActivated();
+			else
+				DropSlot(slot);
+		}
+		else if (slot == _reservedSlot)
+		{
+			Deactivate(); // повторный выбор активированного — вернуть в руку → слот (toggle, F-19)
+		}
 		else
-			ApplySlot(slot);
+		{
+			Item item = _inv.Get(slot);
+			if (item != null && item.Usage == ItemUsage.ActivatedB)
+				ActivateSlot(slot); // взять в руку, слот бронируется (F-18/B, F-19a)
+			else
+				ApplySlot(slot);    // применить напрямую (паттерн A)
+		}
 
 		_selectedRow = -1; // возвращаемся к выбору ряда
 		QueueRedraw();
@@ -268,11 +310,135 @@ public partial class InventoryHud : Control
 		GD.Print($"[Inventory] Drop '{item.TypeId}' → world at ({land.X:F1}, {land.Z:F1})");
 	}
 
+	// Активация (InInventory → Activated, F-18/B): взять предмет в руку. Слот бронируется
+	// (F-19a): предмет остаётся в ячейке (блокирует её), но помечен как «в руке».
+	// Эксклюзивность (F-19): предыдущий активированный сначала деактивируется.
+	private void ActivateSlot(int slot)
+	{
+		Item item = _inv.Get(slot);
+		if (item == null || item.Usage != ItemUsage.ActivatedB)
+			return;
+		if (_reservedSlot >= 0)
+			Deactivate();
+		_activatedItem = item;
+		_reservedSlot = slot;
+		_enterProgress = 0.0f;
+		_player?.PlayPickupGesture(); // анимация взятия предмета в руку (F-15/анимация)
+		if (item is PhotoItem photo)
+			_photoEnter?.BeginPreview(_player, photo); // живое окно вида «сквозь фото» (REQ-0017)
+		GD.Print($"[Inventory] Activate '{item.TypeId}' → hand (slot {slot} reserved)");
+		QueueRedraw();
+	}
+
+	// Деактивация (Activated → InInventory, F-19): вернуть предмет в забронированный слот.
+	private void Deactivate()
+	{
+		if (_reservedSlot < 0)
+			return;
+		if (_viewfinder != null && _viewfinder.Active)
+			_viewfinder.Cancel();
+		GD.Print($"[Inventory] Deactivate '{_activatedItem?.TypeId}' → slot {_reservedSlot}");
+		ClearActivated();
+	}
+
+	// Выброс активированного (Activated → InWorld, F-20): слот освобождается, предмет летит в мир.
+	private void DropActivated()
+	{
+		if (_reservedSlot < 0)
+			return;
+		if (_viewfinder != null && _viewfinder.Active)
+			_viewfinder.Cancel();
+		int slot = _reservedSlot;
+		Item item = _inv.RemoveAt(slot);
+		ClearActivated();
+		if (item != null)
+			SpawnDrop(item);
+	}
+
+	// Уничтожение активированного с заменой (F-19a): камера → фотография в тот же слот,
+	// либо освобождение слота (replacement == null, напр. израсходованная фотография).
+	private void ConsumeActivated(Item replacement)
+	{
+		if (_reservedSlot < 0)
+			return;
+		int slot = _reservedSlot;
+		_inv.RemoveAt(slot);
+		ClearActivated();
+		if (replacement != null)
+		{
+			replacement.Icon = BuildIcon(replacement);
+			_inv.PutAt(slot, replacement);
+		}
+		QueueRedraw();
+	}
+
+	private void ClearActivated()
+	{
+		_activatedItem = null;
+		_reservedSlot = -1;
+		_enterProgress = 0.0f;
+		if (_photoEnter != null)
+		{
+			_photoEnter.Progress = 0.0f;
+			_photoEnter.EndPreview();
+		}
+		QueueRedraw();
+	}
+
+	// Срабатывание фотоаппарата (конец таймера видоискателя, F-22): создаём фотографию с
+	// запечатлёнными позицией и направлением (F-32), кладём в слот, уничтожаем камеру.
+	private void OnCameraFired()
+	{
+		if (_player == null)
+			return;
+		var pos = new Vector2(_player.GlobalPosition.X, _player.GlobalPosition.Z);
+		var photo = new PhotoItem(pos, _player.CameraYawDeg, _player.CameraPitchDeg);
+		int slot = _reservedSlot;
+		ConsumeActivated(photo);
+		GD.Print($"[Camera] Photo created at ({pos.X:F1}, {pos.Y:F1}) yaw={photo.CapturedYawDeg:F0} → slot {slot}");
+	}
+
 	// Подбор (REQ-0016 / F-29): автоматически, когда игрок близко к взведённому предмету
 	// с прямой видимостью и есть свободный слот. Берём ближайший подходящий.
 	public override void _PhysicsProcess(double delta)
 	{
-		if (_player == null || _inv.IsFull)
+		if (_player == null)
+			return;
+		UpdatePhotoEnter((float)delta);
+		TryPickup();
+	}
+
+	// Вход в фотографию (REQ-0017 / F-33): прогресс растёт, пока активирована фотография,
+	// зажат «вперёд» и игрок реально продвигается вперёд (не упёрся в стену). По достижении
+	// EnterDuration — перенос в запечатлённую точку, фотография расходуется.
+	private void UpdatePhotoEnter(float dt)
+	{
+		if (_activatedItem is not PhotoItem photo)
+			return;
+
+		bool forward = Input.IsActionPressed("move_forward");
+		var vel = new Vector2(_player.Velocity.X, _player.Velocity.Z);
+		Vector2 fwd = _player.PlanarCamForward;
+		float advance = fwd.LengthSquared() > 0.0001f ? vel.Dot(fwd.Normalized()) : 0.0f;
+		bool advancing = forward && advance > _player.Speed * 0.4f;
+
+		_enterProgress = advancing ? _enterProgress + dt : 0.0f;
+		if (_photoEnter != null)
+			_photoEnter.Progress = _enterProgress / EnterDuration;
+
+		if (_enterProgress >= EnterDuration)
+		{
+			_player.TeleportTo(photo.CapturedWorldPos, photo.CapturedYawDeg, photo.CapturedPitchDeg);
+			_photoEnter?.Flash();
+			ConsumeActivated(null); // одноразовая: слот освобождается (F-33)
+			GD.Print("[Photo] Entered → teleported");
+		}
+	}
+
+	// Подбор: ближайший взведённый предмет в радиусе с прямой видимостью, если есть слот.
+	private void TryPickup()
+	{
+		if (_inv.IsFull)
 			return;
 
 		WorldItem best = null;
@@ -330,7 +496,7 @@ public partial class InventoryHud : Control
 		if (slot < 0) // на всякий случай (инвентарь полон)
 			return;
 
-		item.Icon = BuildIcon(item.ModelPath); // иконка по 3D-модели предмета (F-29)
+		item.Icon = BuildIcon(item); // иконка по 3D-модели предмета (F-29)
 		_incomingSlots.Add(slot);               // прячем содержимое до прилёта звезды
 
 		Vector3 start = w.GlobalPosition + Vector3.Up * 0.2f;
@@ -376,7 +542,7 @@ public partial class InventoryHud : Control
 		Position = new Vector2(screen.X - content.X - Margin, screen.Y - content.Y - Margin);
 	}
 
-	private Vector2 CompactSize() => new(150, 54);
+	private Vector2 CompactSize() => new(_reservedSlot >= 0 ? 210 : 150, 54);
 
 	private Vector2 ExpandedSize()
 	{
@@ -409,6 +575,17 @@ public partial class InventoryHud : Control
 		int fs = 20;
 		string text = $"{_inv.Count}/{Inventory.Capacity}";
 		DrawString(font, new Vector2(52, 36), text, HorizontalAlignment.Left, -1, fs, TextColor);
+
+		// Индикатор активированного предмета «в руке» (F-16): иконка справа с подсветкой.
+		if (_reservedSlot >= 0)
+		{
+			var iconRect = new Rect2(158, 8, 40, 40);
+			DrawRect(iconRect, FilledBg);
+			if (_activatedItem?.Icon != null)
+				DrawTextureRect(_activatedItem.Icon, iconRect.Grow(-3), false);
+			DrawRect(iconRect, HandColor, false, 2.0f);
+			DrawString(font, new Vector2(152, 52), "в руке", HorizontalAlignment.Left, -1, 11, HandColor);
+		}
 	}
 
 	private void DrawExpanded()
@@ -466,13 +643,22 @@ public partial class InventoryHud : Control
 
 			if (item.Icon != null)
 			{
-				var pad = new Vector2(6, 6);
+				var pad = new Vector2(2, 2);
 				DrawTextureRect(item.Icon, new Rect2(cell.Position + pad, cell.Size - pad * 2), false);
 			}
 
 			// Индикатор типа: цветная точка в углу (расходник ↔ ключ/квест, F-13).
 			Color dot = item.Category == ItemCategory.Consumable ? ConsumableDot : KeyDot;
 			DrawCircle(cell.Position + new Vector2(CellSize - 10, 10), 5.0f, dot);
+
+			// Забронированный слот активированного предмета (F-19a): помечаем «рука».
+			if (slot == _reservedSlot)
+			{
+				DrawRect(cell, new Color(0.0f, 0.0f, 0.0f, 0.28f));
+				DrawRect(cell.Grow(-2), HandColor, false, 3.0f);
+				DrawString(font, cell.Position + new Vector2(6, 18), "рука",
+					HorizontalAlignment.Left, -1, 12, HandColor);
+			}
 		}
 
 		// Порядковый номер колонки для навигации цифрами.

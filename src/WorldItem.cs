@@ -28,7 +28,7 @@ public partial class WorldItem : Node3D
 	public void Setup(Item item, float targetHeight)
 	{
 		Item = item;
-		var model = GD.Load<PackedScene>(item.ModelPath).Instantiate<Node3D>();
+		var model = item.BuildModel();
 		AddChild(model);
 
 		Aabb bounds = ComputeSceneAabb(model);
