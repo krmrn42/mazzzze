@@ -83,6 +83,7 @@ the vertical noise streaks fan out into "fur".
   Manhattan). Each chunk is 16×16 cells = 57.6×57.6 world units. `ChunkManager.UpdateChunks()`
   is called every `_PhysicsProcess` from `Player.cs`.
 - **MazeTiles.tres** is a `MeshLibrary` with exactly 2 items: id 0 = Floor, id 1 = Wall.
+- **Item system** hubs in `InventoryHud.cs` (`HUD/Inventory`). `Inventory`/`Item` = 12-slot model; slot icons render the item's glb into a `SubViewport`. Drop (`DropProjectile`) flings a glowing "star" that lands as a `WorldItem` (glb on floor, kept in a static `WorldItem.All` registry). Pickup is **automatic** (no key): `InventoryHud._PhysicsProcess` scans the registry for the nearest armed item in range with line-of-sight; `PickupProjectile` flies the star back. `ItemStar` is the shared star visual. Requirements: `REQ-0011-inventory/`, and sub-features `REQ-0012-base-item/REQ-001{4,5,6}-...`.
 - **Mob.cs** exists but mobs are not spawned — no spawner is implemented.
 - **game_object.cs** is an empty unused placeholder. Ignore it.
 

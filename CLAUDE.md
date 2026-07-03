@@ -113,18 +113,20 @@ Top-left HUD overlay, procedurally drawn — no textures. Implements `requiremen
 - **Cell-visit detection is in `_PhysicsProcess`** — do not move it to `_Process` (cells can be skipped at variable render rate).
 - Tab toggles orientation (camera-forward-up ↔ world-north-up). Ctrl+wheel zooms the map; player ignores wheel while Ctrl is held.
 
-### Inventory (`src/InventoryHud.cs`, `src/Inventory.cs`, `src/Item.cs`)
+### Item system (inventory · drop · world item · pickup)
 
-Bottom-right HUD overlay, procedurally drawn like the mini-map. Implements `requirements/REQ-0011-inventory/` (US-11/F-12/F-13/F-14).
-- **`Inventory`** — 12-slot model (3 rows × 4 cols), pure data. **`Item`** — minimal item entity (`TypeId`, `DisplayName`, `Category` = Consumable/Key, `Icon`, `Use()`); a subset of REQ-0012, only what the inventory needs.
-- **`InventoryHud`** (`Control`) owns the model, draws compact (bag + "N/12") vs expanded (3×4 grid) states, and handles input in `_Input`.
-- **Item icons render a 3D model:** the seeded camera uses `art/old_kodak_camera.glb` rendered into a `SubViewport` (`OwnWorld3D`, camera auto-framed from the model AABB) → `ViewportTexture` drawn into the slot.
-- **Input**: **double-press I** toggles open/close (interval-detected in code); when open, digit **1–3** selects a row (highlight), then **1–4** selects a column and applies (`Item.Use`, flash). Game is **not paused**, mouse stays captured.
-- **Scope**: apply = pattern A (immediate use); consumables free the slot, keys persist. Pattern B (activate-to-hand / LMB), slot reservation (F-19a), 3D world items and pickup are REQ-0012 and **not implemented** — one camera is seeded directly into slot 0 in `_Ready`.
+`InventoryHud` (`Control`, HUD bottom-right) is the hub; procedurally drawn like the mini-map.
+- **`Inventory` / `Item`** — 12-slot model (3×4, pure data) and a minimal item entity (`TypeId`, `DisplayName`, `Category` = Consumable/Key, `ModelPath`, `Icon`, `Use()`). A subset of REQ-0012 (`requirements/REQ-0012-base-item/`); one camera is seeded into slot 0 in `_Ready`.
+- **Inventory HUD** (REQ-0011, US-11): compact (bag + "N/12") vs expanded (3×4 grid). **double-I** toggles; when open, digit **1–3** picks a row then **1–4** a column → apply (`Item.Use`, pattern A). Game **not paused**, mouse stays captured.
+- **Item icons render the 3D model:** the item's `ModelPath` glb is rendered in a `SubViewport` (`OwnWorld3D`, camera auto-framed from the model AABB) → `ViewportTexture` drawn into the slot.
+- **Drop** (`REQ-0015-base-item-drop`, US-15): **Shift+column** or **G** → `DropProjectile` (a glowing parabolic "star") flies out and lands as a **`WorldItem`** on the floor (glb scaled to 1/8 player height).
+- **Pickup** (`REQ-0016-base-item-pickup`, US-16): **automatic, no key** — `InventoryHud._PhysicsProcess` scans `WorldItem.All` for the nearest *armed* item within `PickupRange` with clear line-of-sight (raycast, mask 1), inventory not full. `PickupProjectile` flies the star back to the player; the slot fills with a flash. A `WorldItem` **arms** only after the player has once been outside its radius (prevents instantly re-grabbing a just-dropped item).
+- **Shared:** `ItemStar` builds the identical emissive star for both projectiles. `WorldItem` keeps a static registry (`All`) and holds its `Item` so pickup restores it.
+- **Not implemented:** Pattern B (activate-to-hand / LMB), slot reservation (F-19a).
 
 ### Input map
 
-WASD / arrow keys, **Tab** (minimap orientation), **double-I** (inventory), **1–4** (inventory row/cell when open), **Ctrl+Q** quits, mouse look, wheel zoom, gamepad left stick. See `[input]` in `project.godot`.
+WASD / arrow keys, **Tab** (minimap orientation), **double-I** (inventory), **1–4** (inventory row/cell), **Shift+1–4 / G** (drop), **Ctrl+Q** quits, mouse look, wheel zoom, gamepad left stick. Pickup is automatic (no key). See `[input]` in `project.godot`.
 
 ### Art pipeline
 

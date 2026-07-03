@@ -1,21 +1,34 @@
 using Godot;
+using System.Collections.Generic;
 
 // Предмет, лежащий в лабиринте (состояние InWorld) — REQ-0014 (US-14 / F-24, F-25).
 //
 // Отображает glb-модель типа предмета, уменьшенную до заданной высоты, стоящей на
-// полу в точке размещения. Живёт под Main (не под чанком), поэтому не выгружается
-// при стриминге. Анимация появления (F-25): модель быстро «вырастает» до целевого
-// масштаба. Коллизия/подбор (InWorld → InInventory) — вне REQ-0014 (задел).
+// полу. Живёт под Main (не под чанком) → не выгружается при стриминге. Хранит свой
+// Item, чтобы при подборе (REQ-0016) восстановить его в инвентаре, и ведёт статический
+// реестр для сканирования подбора. Коллизии нет (задел).
 public partial class WorldItem : Node3D
 {
 	private const float SpawnPopDuration = 0.2f; // F-25: длительность появления
 
-	private float _popT; // 0 → 1
+	// Реестр всех предметов в мире — по нему InventoryHud сканирует подбор (REQ-0016 / F-29).
+	public static readonly List<WorldItem> All = new();
+	// Радиус «взвода»: предмет становится доступен для подбора только после того, как игрок
+	// хотя бы раз оказался дальше него (защита от мгновенного повторного подбора). Задаётся
+	// InventoryHud от PickupRange.
+	public static float ArmingRadius = 1.5f;
 
-	// modelPath — .glb предмета; targetHeight — желаемая высота модели в метрах.
-	public void Setup(string modelPath, float targetHeight)
+	public Item Item { get; private set; }
+	public bool Armed { get; private set; }
+
+	private float _popT; // 0 → 1
+	private Node3D _player;
+
+	// item — что за предмет; targetHeight — желаемая высота модели в метрах.
+	public void Setup(Item item, float targetHeight)
 	{
-		var model = GD.Load<PackedScene>(modelPath).Instantiate<Node3D>();
+		Item = item;
+		var model = GD.Load<PackedScene>(item.ModelPath).Instantiate<Node3D>();
 		AddChild(model);
 
 		Aabb bounds = ComputeSceneAabb(model);
@@ -25,15 +38,37 @@ public partial class WorldItem : Node3D
 		model.Position = new Vector3(0, -bounds.Position.Y * scale, 0);
 	}
 
+	// Забрать предмет из мира (при подборе): убрать из реестра сразу, чтобы скан не взял дважды.
+	public void Take()
+	{
+		All.Remove(this);
+		QueueFree();
+	}
+
+	public override void _EnterTree() => All.Add(this);
+	public override void _ExitTree() => All.Remove(this);
+
+	public override void _Ready() => _player = GetNodeOrNull<Node3D>("/root/Main/Player");
+
 	public override void _PhysicsProcess(double delta)
 	{
-		if (_popT >= 1.0f)
-			return;
+		// «Взвод»: как только игрок оказался вне радиуса (по горизонтали) — предмет
+		// можно поднимать (F-29). Планарная дистанция: вертикаль не влияет.
+		if (!Armed && _player != null)
+		{
+			Vector3 p = _player.GlobalPosition;
+			Vector3 s = GlobalPosition;
+			if (new Vector2(p.X - s.X, p.Z - s.Z).Length() > ArmingRadius)
+				Armed = true;
+		}
 
-		_popT = Mathf.Min(1.0f, _popT + (float)delta / SpawnPopDuration);
-		// Небольшой «перелёт» за 1.0 для живого появления.
-		float s = Mathf.Lerp(0.2f, 1.0f, Mathf.Ease(_popT, -1.8f));
-		Scale = Vector3.One * s;
+		// Анимация появления (F-25): модель быстро «вырастает» до целевого масштаба.
+		if (_popT < 1.0f)
+		{
+			_popT = Mathf.Min(1.0f, _popT + (float)delta / SpawnPopDuration);
+			float s = Mathf.Lerp(0.2f, 1.0f, Mathf.Ease(_popT, -1.8f));
+			Scale = Vector3.One * s;
+		}
 	}
 
 	// Объединённый мировой AABB всех VisualInstance3D под root (root уже в дереве).

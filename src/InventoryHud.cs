@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 // Инвентарь (рюкзак) — HUD-виджет в правом нижнем углу (REQ-0011, US-11 / F-12..F-14).
 //
@@ -17,8 +18,9 @@ using Godot;
 //
 // Применение делегируется предмету (Item.Use, паттерн A / F-18). Выброс (REQ-0015)
 // создаёт летящую звёздочку (DropProjectile) → предмет в мире (WorldItem, REQ-0014).
-// Полная сущность предмета (REQ-0012: активация в руку F-18/B, бронь слота F-19a,
-// подбор) и поведение конкретных предметов (REQ-0013) — вне этой задачи.
+// Подбор (REQ-0016) — обратный переход: автоматически, когда игрок близко к предмету
+// с прямой видимостью; PickupProjectile летит от предмета к игроку, предмет ложится в слот.
+// Активация в руку (F-18/B) и бронь слота (F-19a) — вне этой задачи.
 public partial class InventoryHud : Control
 {
 	[Export] public float DoublePressWindow = 0.4f; // окно двойного нажатия I, сек
@@ -36,6 +38,11 @@ public partial class InventoryHud : Control
 	[Export] public float PlayerHeight = 1.8f;          // эталон роста
 	[Export] public float DropFlightDuration = 0.6f;    // время полёта звёздочки, сек
 	[Export] public float DropArcHeight = 1.2f;         // высота параболы, м
+
+	// Конфигурация подбора (REQ-0016).
+	[Export] public float PickupRange = 1.1f;           // радиус срабатывания подбора, м
+	[Export] public float PickupArcHeight = 1.0f;       // высота параболы обратной звезды, м
+	[Export] public float PickupFlightDuration = 0.6f;  // время полёта звёздочки к игроку, сек
 
 	// Палитра в тон миникарте (тёплый пергамент).
 	private static readonly Color PanelBg      = new(0.10f, 0.08f, 0.06f, 0.85f);
@@ -60,6 +67,8 @@ public partial class InventoryHud : Control
 	private int _flashSlot = -1;      // ячейка, которую сейчас «вспыхиваем»
 	private float _flashT;            // 1 → 0
 
+	private readonly HashSet<int> _incomingSlots = new(); // слоты с «летящим» предметом (pickup)
+
 	private SubViewport _iconViewport;
 	private Player _player;
 
@@ -67,6 +76,8 @@ public partial class InventoryHud : Control
 	{
 		MouseFilter = MouseFilterEnum.Ignore; // не перехватываем клики у игры
 		_player = GetNodeOrNull<Player>("/root/Main/Player");
+		// Радиус «взвода» чуть больше радиуса подбора — гистерезис (REQ-0016 / F-29).
+		WorldItem.ArmingRadius = PickupRange + 0.4f;
 
 		// Засев: один предмет — «Старинный фотоаппарат» (используем только glb-модель
 		// из REQ-0013; сама механика фотоаппарата не реализуется).
@@ -245,17 +256,100 @@ public partial class InventoryHud : Control
 			distance = Mathf.Max(0.3f, origin.DistanceTo((Vector3)hit["position"]) - 0.4f);
 
 		Vector3 start = _player.GlobalPosition + Vector3.Up * 1.0f;
-		Vector3 land = new Vector3(
-			_player.GlobalPosition.X + dir.X * distance,
-			_player.GlobalPosition.Y - 0.2f, // на уровне пола
-			_player.GlobalPosition.Z + dir.Z * distance);
+		float lx = _player.GlobalPosition.X + dir.X * distance;
+		float lz = _player.GlobalPosition.Z + dir.Z * distance;
+		Vector3 land = new Vector3(lx, FloorYAt(lx, lz, _player.GlobalPosition.Y), lz);
 
 		float targetHeight = WorldItemSizeFraction * PlayerHeight;
 
 		var projectile = new DropProjectile();
 		_player.GetParent().AddChild(projectile);
-		projectile.Setup(start, land, DropArcHeight, DropFlightDuration, item.ModelPath, targetHeight);
+		projectile.Setup(start, land, DropArcHeight, DropFlightDuration, item, targetHeight);
 		GD.Print($"[Inventory] Drop '{item.TypeId}' → world at ({land.X:F1}, {land.Z:F1})");
+	}
+
+	// Подбор (REQ-0016 / F-29): автоматически, когда игрок близко к взведённому предмету
+	// с прямой видимостью и есть свободный слот. Берём ближайший подходящий.
+	public override void _PhysicsProcess(double delta)
+	{
+		if (_player == null || _inv.IsFull)
+			return;
+
+		WorldItem best = null;
+		float bestD = float.MaxValue;
+		foreach (WorldItem w in WorldItem.All)
+		{
+			if (!w.Armed)
+				continue;
+			float d = PlanarDistance(_player.GlobalPosition, w.GlobalPosition);
+			if (d > PickupRange || d >= bestD)
+				continue;
+			if (!HasLineOfSight(w.GlobalPosition))
+				continue;
+			best = w;
+			bestD = d;
+		}
+
+		if (best != null)
+			StartPickup(best);
+	}
+
+	private static float PlanarDistance(Vector3 a, Vector3 b) =>
+		new Vector2(a.X - b.X, a.Z - b.Z).Length();
+
+	// Прямая видимость = нет стены между игроком и предметом. Луч ГОРИЗОНТАЛЬНЫЙ на высоте
+	// груди (не опускается к предмету у пола), поэтому детектирует стены, а не пол.
+	private bool HasLineOfSight(Vector3 itemPos)
+	{
+		Vector3 origin = _player.GlobalPosition + Vector3.Up * 0.6f;
+		Vector3 target = new Vector3(itemPos.X, origin.Y, itemPos.Z);
+		if (origin.DistanceSquaredTo(target) < 0.0004f)
+			return true; // стоим прямо на предмете — стены между нет
+		var query = PhysicsRayQueryParameters3D.Create(origin, target);
+		query.CollisionMask = 1;
+		query.Exclude = new Godot.Collections.Array<Rid> { _player.GetRid() };
+		return _player.GetWorld3D().DirectSpaceState.IntersectRay(query).Count == 0;
+	}
+
+	// Уровень пола в точке XZ (луч вниз) — чтобы предмет лёг на пол, не проваливаясь.
+	private float FloorYAt(float x, float z, float refY)
+	{
+		var from = new Vector3(x, refY + 1.0f, z);
+		var to = new Vector3(x, refY - 3.0f, z);
+		var query = PhysicsRayQueryParameters3D.Create(from, to);
+		query.CollisionMask = 1;
+		query.Exclude = new Godot.Collections.Array<Rid> { _player.GetRid() };
+		var hit = _player.GetWorld3D().DirectSpaceState.IntersectRay(query);
+		return hit.Count > 0 ? ((Vector3)hit["position"]).Y : refY - 0.3f;
+	}
+
+	private void StartPickup(WorldItem w)
+	{
+		Item item = w.Item;
+		int slot = _inv.TryAdd(item);
+		if (slot < 0) // на всякий случай (инвентарь полон)
+			return;
+
+		item.Icon = BuildIcon(item.ModelPath); // иконка по 3D-модели предмета (F-29)
+		_incomingSlots.Add(slot);               // прячем содержимое до прилёта звезды
+
+		Vector3 start = w.GlobalPosition + Vector3.Up * 0.2f;
+		w.Take(); // убрать из мира и реестра сразу, чтобы не подобрать дважды
+
+		var projectile = new PickupProjectile();
+		_player.GetParent().AddChild(projectile);
+		projectile.Setup(start, _player, this, slot, PickupArcHeight, PickupFlightDuration);
+		GD.Print($"[Inventory] Pickup '{item.TypeId}' → slot {slot}");
+		QueueRedraw();
+	}
+
+	// Звезда долетела до игрока: раскрываем ячейку и подсвечиваем вспышкой (F-30).
+	public void OnPickupArrived(int slot)
+	{
+		_incomingSlots.Remove(slot);
+		_flashSlot = slot;
+		_flashT = 1.0f;
+		QueueRedraw();
 	}
 
 	private void Toggle()
@@ -358,6 +452,12 @@ public partial class InventoryHud : Control
 		{
 			// Пустая ячейка: приглушённый контур без содержимого (F-13).
 			DrawRect(cell, EmptyOutline, false, 2.0f);
+		}
+		else if (_incomingSlots.Contains(slot))
+		{
+			// Предмет ещё «летит» (pickup, REQ-0016): резервируем ячейку без содержимого.
+			DrawRect(cell, FilledBg);
+			DrawRect(cell.Grow(-3), CursorColor, false, 2.0f);
 		}
 		else
 		{

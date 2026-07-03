@@ -46,3 +46,4 @@
 |----|---------|------|--------|------|
 | REQ-0014 | Предмет в мире (состояние `InWorld` + анимации) | F-24…F-25 | ✅ базово | [REQ-0014-base-item-item-in-world/](./REQ-0014-base-item-item-in-world/README.md) |
 | REQ-0015 | Выбрасывание (drop: `InInventory → InWorld`) | F-26…F-28 | ✅ | [REQ-0015-base-item-drop/](./REQ-0015-base-item-drop/README.md) |
+| REQ-0016 | Поднять (pickup: `InWorld → InInventory`) | F-29…F-30 | ✅ | [REQ-0016-base-item-pickup/](./REQ-0016-base-item-pickup/README.md) |
