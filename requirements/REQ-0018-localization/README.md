@@ -9,7 +9,7 @@
 > - Выбор языка при запуске: [02-locale-logic.md](./02-locale-logic.md) (F-36)
 > - Настройки проекта: [03-project-setup.md](./03-project-setup.md) (F-37)
 > - Использование в коде: [04-code-usage.md](./04-code-usage.md) (F-38)
-> - Сквозная инфраструктура: применяется к UI-строкам всех фич — [REQ-0011-inventory](../REQ-0011-inventory/), [REQ-0013-vintage-camera](../REQ-0013-vintage-camera/), [REQ-0017-photograph](../REQ-0017-photograph/) и др.
+> - Сквозная инфраструктура: применяется к UI-строкам всех фич — [REQ-0011-inventory](../REQ-0011-inventory/), [REQ-0013-vintage-camera](../REQ-0013-vintage-camera/), [REQ-0017-photo](../REQ-0017-photo/) и др.
 
 ---
 
@@ -42,4 +42,4 @@
 | F-38 | Использование в коде (Tr + что локализовать) | [04-code-usage.md](./04-code-usage.md) |
 
 **Реализация (HOW):** [design.md](./design.md)
-**Связано:** сквозная инфраструктура для всех UI-строк ([REQ-0011-inventory](../REQ-0011-inventory/) — есть строки «Рюкзак», «выбросить»; будущие строки [REQ-0013](../REQ-0013-vintage-camera/), [REQ-0017](../REQ-0017-photograph/)).
+**Связано:** сквозная инфраструктура для всех UI-строк ([REQ-0011-inventory](../REQ-0011-inventory/) — есть строки «Рюкзак», «выбросить»; будущие строки [REQ-0013](../REQ-0013-vintage-camera/), [REQ-0017](../REQ-0017-photo/)).
