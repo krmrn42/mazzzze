@@ -86,6 +86,7 @@ public partial class PhotoEnterHud : Control
 
 		Vector3 faceNormal = Vector3.Back;
 		Vector3[] cardPts = null; int cardVerts = -1;
+		Vector3[] photoPts = null;
 		foreach (Node n in FindMeshes(model))
 		{
 			var mi = (MeshInstance3D)n;
@@ -113,6 +114,9 @@ public partial class PhotoEnterHud : Control
 			// (там в текстуре модели вшито фото девушки).
 			if (uvMean.X > 0.5f && uvMean.Y < 0.5f)
 			{
+				// Плоская грань фото — самый чистый прямоугольник модели: по нему берём ориентацию.
+				photoPts = new Vector3[pos.Length];
+				for (int i = 0; i < pos.Length; i++) photoPts[i] = mi.GlobalTransform * pos[i];
 				Vector2 span = uvMax - uvMin;
 				if (span.X > 0.0001f && span.Y > 0.0001f)
 				{
@@ -131,8 +135,9 @@ public partial class PhotoEnterHud : Control
 			}
 		}
 
-		// «Верх» карточки — главная ось её вершин в плоскости грани (устойчиво к повороту модели).
-		Vector3 faceUp = InPlaneMajorAxis(cardPts, faceNormal);
+		// «Верх» карточки = истинное ребро прямоугольника грани фото (мин. охватывающий
+		// прямоугольник) → рамка встаёт строго вертикально, без наклона от «шумной» PCA корпуса.
+		Vector3 faceUp = UprightAxis(photoPts ?? cardPts, faceNormal);
 		FrameFrontOn(cardPts, faceNormal, faceUp);
 
 		var key = new DirectionalLight3D { LightEnergy = 1.4f };
@@ -178,6 +183,49 @@ public partial class PhotoEnterHud : Control
 		_frameVp.AddChild(cam);
 		cam.GlobalPosition = center + n * depth;
 		cam.LookAt(center, up);
+	}
+
+	// Истинное «вертикальное» ребро плоского прямоугольника (грани фото): ищем угол
+	// минимального охватывающего прямоугольника (rotating-calipers по свипу угла) — его рёбра
+	// совпадают с реальными сторонами карточки, поэтому рамка встаёт ровно, без наклона.
+	// Знак/ось выбираем ближе к PCA-«верху» контента, чтобы фото не перевернулось.
+	private static Vector3 UprightAxis(Vector3[] pts, Vector3 n)
+	{
+		if (pts == null || pts.Length < 3)
+			return Vector3.Up;
+		n = n.Normalized();
+		Vector3 t1 = (Mathf.Abs(n.Y) < 0.9f ? n.Cross(Vector3.Up) : n.Cross(Vector3.Right)).Normalized();
+		Vector3 t2 = n.Cross(t1).Normalized();
+
+		float bestArea = float.MaxValue, bestTheta = 0.0f;
+		for (int i = 0; i < 180; i++) // 0..90° с шагом 0.5° (прямоугольник симметричен mod 90°)
+		{
+			float th = Mathf.DegToRad(i * 0.5f);
+			float c = Mathf.Cos(th), s = Mathf.Sin(th);
+			float uMin = float.MaxValue, uMax = float.MinValue, vMin = float.MaxValue, vMax = float.MinValue;
+			foreach (Vector3 p in pts)
+			{
+				float a = p.Dot(t1), b = p.Dot(t2);
+				float u = a * c + b * s, v = -a * s + b * c;
+				uMin = Mathf.Min(uMin, u); uMax = Mathf.Max(uMax, u);
+				vMin = Mathf.Min(vMin, v); vMax = Mathf.Max(vMax, v);
+			}
+			float area = (uMax - uMin) * (vMax - vMin);
+			if (area < bestArea) { bestArea = area; bestTheta = th; }
+		}
+
+		float cc = Mathf.Cos(bestTheta), ss = Mathf.Sin(bestTheta);
+		Vector3 axisU = (t1 * cc + t2 * ss).Normalized();
+		Vector3 axisV = (t1 * -ss + t2 * cc).Normalized();
+		Vector3 refUp = InPlaneMajorAxis(pts, n); // грубое направление «верха» контента
+
+		Vector3 best = axisU; float bestDot = -1.0f;
+		foreach (Vector3 cand in new[] { axisU, -axisU, axisV, -axisV })
+		{
+			float d = cand.Dot(refUp);
+			if (d > bestDot) { bestDot = d; best = cand; }
+		}
+		return best;
 	}
 
 	// Главная ось разброса точек в плоскости с нормалью n (2D-PCA) — направление «высоты»
