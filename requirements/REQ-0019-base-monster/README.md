@@ -1,7 +1,7 @@
 # REQ-0019-base-monster — Базовая сущность монстра (Monster)
 
 > **Фича:** REQ-0019-base-monster · **User Story:** US-19 · **Functional:** F-39, F-40, F-41, F-42, F-43
-> **Статус:** ✅ Реализовано (шаблон; первый конкретный монстр — [REQ-0020-base-monster-wukong](./REQ-0020-base-monster-wukong/README.md))
+> **Статус:** ✅ Реализовано (шаблон; первый конкретный монстр — [REQ-0020-base-monster-ifrit](./REQ-0020-base-monster-ifrit/README.md))
 > **Тип документа:** обзор фичи (WHAT)
 >
 > **Исток:** [IDEA-0026 — базовый монстр](../../ideas/monsters/IDEA-0026-base-monster.md)
@@ -42,7 +42,7 @@
 
 **Реализация (HOW):** [design.md](./design.md) · глобальный контекст — [TECH_SPEC.md](../TECH_SPEC.md)
 
-**Связано:** [REQ-0003-core](../REQ-0003-core/README.md) — мир/лабиринт/чанки (`MazeData`, стриминг). Зависимости (будущие фичи): система здоровья игрока, спавнер монстров, теннисный мячик ([IDEA-0025](../../ideas/items/IDEA-0025-tennis-ball.md)). Конкретный монстр: [REQ-0020-base-monster-wukong](./REQ-0020-base-monster-wukong/README.md).
+**Связано:** [REQ-0003-core](../REQ-0003-core/README.md) — мир/лабиринт/чанки (`MazeData`, стриминг). Зависимости (будущие фичи): система здоровья игрока, спавнер монстров, теннисный мячик ([IDEA-0025](../../ideas/items/IDEA-0025-tennis-ball.md)). Конкретный монстр: [REQ-0020-base-monster-ifrit](./REQ-0020-base-monster-ifrit/README.md).
 
 ---
 
@@ -52,4 +52,4 @@
 
 | ID | Подфича | F-ID | Статус | Путь |
 |----|---------|------|--------|------|
-| REQ-0020 | Wukong (волк, контактный) | F-44…F-46 | ✅ реализовано | [REQ-0020-base-monster-wukong/](./REQ-0020-base-monster-wukong/README.md) |
+| REQ-0020 | Ifrit (ифрит, контактный) | F-44…F-46 | ✅ реализовано | [REQ-0020-base-monster-ifrit/](./REQ-0020-base-monster-ifrit/README.md) |

@@ -51,7 +51,7 @@ maze-prototype-1/
 │   ├── body.tres              # Player body material (orange)
 │   ├── eye.tres               # Player eye material (white, emissive)
 │   ├── pupil.tres             # Player pupil material (black, rim)
-│   ├── black_myth_wukong.glb  # Wukong monster model (wolf) — US-20
+│   ├── ifrit.glb  # Ifrit monster model (fiery humanoid, full anim set) — US-20
 │   ├── mob.glb                # Old enemy model (unused; Mob stub superseded)
 │   ├── mob.blend              # Enemy source (Blender)
 │   ├── mob_body.tres          # Enemy body material (blue)
@@ -74,7 +74,7 @@ maze-prototype-1/
 │   ├── REQ-0017-photo/       # Photo portal item (US-17, F-31..34) — IMPLEMENTED
 │   ├── REQ-0018-localization/ # i18n (US-18, F-35..38) — planned
 │   └── REQ-0019-base-monster/ # Monster template (US-19, F-39..43) — IMPLEMENTED
-│       └── REQ-0020-base-monster-wukong/ # Wukong (US-20, F-44..46) — IMPLEMENTED
+│       └── REQ-0020-base-monster-ifrit/ # Ifrit (US-20, F-44..46) — IMPLEMENTED
 └── src/
     ├── Player.cs              # Player controller
     ├── MazeData.cs            # Maze world data & procedural generation
@@ -93,10 +93,10 @@ maze-prototype-1/
     ├── ViewfinderHud.cs       # Vintage-camera viewfinder + timer + focus (Control)
     ├── PhotoEnterHud.cs       # Photo walk-into progress vignette + teleport flash (Control)
     ├── Monster.cs             # Base monster template: perception, FSM, pathfinding, contact (US-19)
-    ├── Wukong.cs              # First concrete monster: wolf, contact (US-20)
-    ├── MonsterSpawner.cs      # Minimal debug spawner (places Wukong near start)
+    ├── Ifrit.cs              # First concrete monster: fiery humanoid, contact (US-20)
+    ├── MonsterSpawner.cs      # Minimal debug spawner (places Ifrit near start)
     ├── DamageHud.cs           # Red hit-flash overlay (no health system yet)
-    └── Mob.cs                 # Old enemy stub (superseded by Monster/Wukong, unused)
+    └── Mob.cs                 # Old enemy stub (superseded by Monster/Ifrit, unused)
 ```
 
 ## 4. Scene Hierarchy (Runtime)
@@ -120,7 +120,7 @@ Main (Node3D)                              - main.tscn, root
 │   └── Chunk (xN, dynamic)              - instances of chunk.tscn
 │       └── GridMap (cell_size=3.6,1,3.6, cell_center_y=false) - renders Floor/Wall tiles
 ├── MonsterSpawner (Node3D + MonsterSpawner.cs) - minimal debug spawner (§5.8)
-├── Wukong (xN, CharacterBody3D + Wukong.cs) - monsters, spawned under Main (persistent) (§5.8)
+├── Ifrit (xN, CharacterBody3D + Ifrit.cs) - monsters, spawned under Main (persistent) (§5.8)
 ├── WorldEnvironment                      - procedural sky, ambient light
 └── HUD (CanvasLayer)
     ├── Minimap (Control + Minimap.cs)    - top-left mini-map overlay (§5.10)
@@ -420,10 +420,10 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 - Tonemap: Filmic (mode 3), white 6.0.
 - SDFGI: disabled
 
-### 5.8 Monsters - Base Template and Wukong (US-19 / US-20)
+### 5.8 Monsters - Base Template and Ifrit (US-19 / US-20)
 
-**Files:** `src/Monster.cs` (abstract template), `src/Wukong.cs` (concrete), `src/MonsterSpawner.cs`, `src/DamageHud.cs`.
-**Requirements:** `REQ-0019-base-monster/` (F-39..43), `REQ-0020-base-monster-wukong/` (F-44..46). See those `design.md` for full detail.
+**Files:** `src/Monster.cs` (abstract template), `src/Ifrit.cs` (concrete), `src/MonsterSpawner.cs`, `src/DamageHud.cs`.
+**Requirements:** `REQ-0019-base-monster/` (F-39..43), `REQ-0020-base-monster-ifrit/` (F-44..46). See those `design.md` for full detail.
 
 **`Monster` (abstract `CharacterBody3D`)** — the template; a concrete type sets params in its ctor.
 - **Registry (F-43):** static `Monster.All`, add/remove in `_EnterTree`/`_ExitTree` (mirrors `WorldItem.All`). Monsters live under `Main` → **persistent**, not chunk-bound.
@@ -431,14 +431,14 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 - **FSM (F-41)** in `_PhysicsProcess`: `Cycle` (patrol) / `Threat` (chase) / `Stun` / `Distract`. Priority Stun > player-visibility > distraction; no memory after disruption (→ `Cycle`).
 - **Movement:** BFS pathfinding over `MazeData.IsFloor` cells (`FindPath`), following cell centres + direct final-approach; patrol restricted to a segment. Gravity + `MoveAndSlide`.
 - **Contact damage (F-42):** planar touch distance, throttled by `ContactInterval`; emits `PlayerHit(damage)` signal + `DamageHud` red flash + log. No health system yet (monster only reports the hit).
-- **Model:** `BuildBody` instantiates the type's glb, computes a **local-space** AABB (avoids float32 loss at world −18000), scales by **length** (`TargetLength`) for a low/long model, grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis; `ModelPivot` faces movement via `LookAt` + `ModelYawOffsetDeg`.
-- **Animation:** `UpdateAnim`/`PlayAttack` drive the model's `AnimationPlayer` — `MoveAnim` (looped, speed-scaled by velocity) + `AttackAnim` (one-shot on contact). The wukong glb ships only combat clips (no walk/idle cycle), so Wukong loops `atk01_loop` for locomotion and plays `bite01` on contact; nose is along model X → `ModelYawOffsetDeg` = 90°.
+- **Model:** `BuildBody` instantiates the type's glb, computes a **local-space** AABB (avoids float32 loss at world −18000), scales by **height** (`TargetHeight`; `ScaleByLength` → by horizontal span for low/long models), grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis; `ModelPivot` faces movement via `LookAt` + `ModelYawOffsetDeg` (180° for the ifrit — forward +Z like the player rig).
+- **Animation:** `UpdateAnim`/`PlayAttack` drive the model's `AnimationPlayer` — `IdleAnim` (still) / `MoveAnim` (moving, looped + speed-scaled) / `AttackAnim` (one-shot on contact) / `StunAnim` (one-shot on `Stun()`). Idle/Move loops forced via `SetLoop` (glb clips import one-shot). The ifrit ships a full set: `Idle`, `Run`, `Attack`, `BeHit` (`Monster_YiFuLiTe_*`).
 
-**`Wukong`** — wolf, contact delivery. Defaults: vision 18 wu / 100°, patrol 2.0 / chase 4.0 wu/s, damage 10, chase-drop 57.6 wu (1 chunk), contact 0.7 s, stun 2.5 s, segment 16 cells, `art/black_myth_wukong.glb`.
+**`Ifrit`** — fiery humanoid demon, contact delivery. Defaults: vision 18 wu / 100°, patrol 2.0 / chase 4.0 wu/s, damage 10, chase-drop 57.6 wu (1 chunk), contact 0.7 s, stun 2.5 s, segment 16 cells, height 2.4, `art/ifrit.glb`.
 
-**`MonsterSpawner`** (`Main/MonsterSpawner`) — minimal **debug** spawner: places a few Wukong near the player start and creates the `DamageHud`. A real spawner is a future feature.
+**`MonsterSpawner`** (`Main/MonsterSpawner`) — minimal **debug** spawner: places a few Ifrit near the player start and creates the `DamageHud`. A real spawner is a future feature.
 
-**Not implemented / hooks:** `Stun()` is public but has no trigger yet (future tennis ball, IDEA-0025); distraction reacts to any `WorldItem` (no dedicated lure type); Ranged delivery, Small size, player health system, and model animations are future. The old `Mob.cs`/`mob.tscn` charge stub is **superseded** (present, unused).
+**Not implemented / hooks:** `Stun()` is public but has no trigger yet (future tennis ball, IDEA-0025); distraction reacts to any `WorldItem` (no dedicated lure type); Ranged delivery, Small size, player health system, and a death state (the `Death` clip is unused) are future. The old `Mob.cs`/`mob.tscn` charge stub is **superseded** (present, unused).
 
 ### 5.9 Art Assets
 

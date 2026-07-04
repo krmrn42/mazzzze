@@ -3,12 +3,12 @@ using System.Collections.Generic;
 
 // Минимальный отладочный спавнер монстров (REQ-0019/0020).
 //
-// Полноценный спавнер — отдельная будущая фича; здесь лишь размещаем несколько Wukong'ов
+// Полноценный спавнер — отдельная будущая фича; здесь лишь размещаем несколько Ifrit'ов
 // рядом со стартовой клеткой игрока, чтобы фичу можно было увидеть и проверить в игре.
 // Также создаёт `DamageHud` (красная вспышка при контакте) в слое HUD.
 public partial class MonsterSpawner : Node3D
 {
-	[Export] public int Count = 3;              // сколько Wukong'ов заспавнить
+	[Export] public int Count = 3;              // сколько Ifrit'ов заспавнить
 	[Export] public int MinCellDistance = 4;    // ближняя граница кольца спавна (клеток)
 	[Export] public int MaxCellDistance = 11;   // дальняя граница кольца спавна (клеток)
 
@@ -34,14 +34,14 @@ public partial class MonsterSpawner : Node3D
 
 		foreach (Vector2I c in cells)
 		{
-			var wukong = new Wukong();
-			wukong.Position = new Vector3(
+			var monster = new Ifrit();
+			monster.Position = new Vector3(
 				(c.X + 0.5f) * cs + maze.WorldOffsetX,
 				0.5f,
 				(c.Y + 0.5f) * cs + maze.WorldOffsetZ);
-			main.AddChild(wukong);
+			main.AddChild(monster);
 		}
-		GD.Print($"[MonsterSpawner] Spawned {cells.Count} Wukong near start {start}");
+		GD.Print($"[MonsterSpawner] Spawned {cells.Count} Ifrit near start {start}");
 	}
 
 	// Клетки пола в кольце [Min..Max] клеток от старта, не слишком близко к игроку.

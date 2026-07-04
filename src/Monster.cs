@@ -5,7 +5,7 @@ using System.Collections.Generic;
 //
 // Абстрактный `CharacterBody3D`: восприятие (конус зрения + LoS, F-40), конечный автомат
 // поведения (Cycle / Threat / Stun / Distract, F-41), доставка угрозы (контакт, F-42),
-// единый статический реестр (F-43) по образцу `WorldItem.All`. Конкретный тип (Wukong,
+// единый статический реестр (F-43) по образцу `WorldItem.All`. Конкретный тип (Ifrit,
 // REQ-0020) задаёт параметры (F-39), модель и форму цикла.
 //
 // Движение — поиск пути по клеткам лабиринта (BFS над `MazeData.IsFloor`): монстр надёжно
@@ -36,12 +36,16 @@ public abstract partial class Monster : CharacterBody3D
 	[Export] public float DistractReachRadius = 1.5f;// «достигнут» предмет отвлечения
 	[Export] public int SegmentCells = 16;           // размер сегмента патруля (клеток), ≈1 чанк
 	[Export] public string ModelPath = "";
-	[Export] public float TargetLength = 2.8f;       // целевой горизонтальный габарит модели, wu
+	[Export] public bool ScaleByLength = false;      // true — по длине (низкие/длинные), иначе по высоте
+	[Export] public float TargetLength = 2.8f;       // целевой горизонтальный габарит (если ScaleByLength)
+	[Export] public float TargetHeight = 2.4f;       // целевая высота модели, wu
 	[Export] public float Gravity = 15.0f;
 	[Export] public float ModelYawOffsetDeg = 180.0f;// forward модели vs -Z у LookAt (калибруется)
 	[Export] public float ModelUprightPitchDeg = 0.0f; // коррекция up-оси ассета (0 — не нужна)
-	[Export] public string MoveAnim = "";            // зацикленный клип локомоции/покоя
+	[Export] public string IdleAnim = "";            // зацикленный клип покоя (на месте)
+	[Export] public string MoveAnim = "";            // зацикленный клип бега/ходьбы
 	[Export] public string AttackAnim = "";          // одноразовый клип атаки (на контакте)
+	[Export] public string StunAnim = "";            // одноразовый клип реакции на попадание (стан)
 	[Export] public float MoveAnimBaseScale = 1.0f;  // темп клипа локомоции на скорости патруля
 	public float EyeHeight = 1.2f;                    // выставляется по фактической высоте модели
 	public float BodyHeight = 1.0f;
@@ -94,6 +98,7 @@ public abstract partial class Monster : CharacterBody3D
 		State = MState.Stun;
 		_stunT = StunDuration;
 		Velocity = Vector3.Zero;
+		PlayOneShot(StunAnim); // реакция на попадание (BeHit)
 		GD.Print($"[Monster] '{TypeId}' stunned {StunDuration:F1}s");
 	}
 
@@ -159,26 +164,44 @@ public abstract partial class Monster : CharacterBody3D
 		UpdateAnim(new Vector2(Velocity.X, Velocity.Z).Length());
 	}
 
-	// Управление анимацией: пока играет одноразовая атака — не перебиваем; иначе крутим
-	// зацикленный клип локомоции, ускоряя темп с фактической скоростью движения.
+	// Управление анимацией: одноразовые клипы (атака/стан) доигрывают, не перебиваясь; иначе —
+	// бег при движении / покой на месте. Темп бега ускоряется с фактической скоростью.
 	private void UpdateAnim(float planarSpeed)
 	{
 		if (_anim == null)
 			return;
-		if (_anim.CurrentAnimation == AttackAnim && _anim.IsPlaying())
+		if (IsOneShotPlaying())
 			return;
-		if (!string.IsNullOrEmpty(MoveAnim) && _anim.CurrentAnimation != MoveAnim)
-			_anim.Play(MoveAnim);
-		_anim.SpeedScale = Mathf.Clamp(MoveAnimBaseScale * (0.5f + planarSpeed / Mathf.Max(PatrolSpeed, 0.1f)), 0.4f, 3.0f);
+		bool moving = planarSpeed > 0.15f;
+		string clip = moving ? MoveAnim : IdleAnim;
+		if (string.IsNullOrEmpty(clip)) clip = MoveAnim;
+		if (!string.IsNullOrEmpty(clip) && _anim.CurrentAnimation != clip)
+			_anim.Play(clip);
+		_anim.SpeedScale = moving
+			? Mathf.Clamp(MoveAnimBaseScale * (0.5f + planarSpeed / Mathf.Max(PatrolSpeed, 0.1f)), 0.4f, 3.0f)
+			: 1.0f;
 	}
 
-	// Проиграть клип атаки (одноразовый) — при контакте с игроком.
-	private void PlayAttack()
+	private bool IsOneShotPlaying() =>
+		_anim.IsPlaying() && (_anim.CurrentAnimation == AttackAnim || _anim.CurrentAnimation == StunAnim);
+
+	// Проиграть одноразовый клип (атака/стан), если задан.
+	private void PlayOneShot(string clip)
 	{
-		if (_anim == null || string.IsNullOrEmpty(AttackAnim) || _anim.CurrentAnimation == AttackAnim)
+		if (_anim == null || string.IsNullOrEmpty(clip) || _anim.CurrentAnimation == clip)
 			return;
 		_anim.SpeedScale = 1.0f;
-		_anim.Play(AttackAnim);
+		_anim.Play(clip);
+	}
+
+	private void PlayAttack() => PlayOneShot(AttackAnim);
+
+	// Ставит клипу зацикливание (клипы .glb обычно импортируются как one-shot).
+	private void SetLoop(string clip)
+	{
+		if (_anim == null || string.IsNullOrEmpty(clip) || !_anim.HasAnimation(clip))
+			return;
+		_anim.GetAnimation(clip).LoopMode = Animation.LoopModeEnum.Linear;
 	}
 
 	private void EnterCycle()
@@ -432,6 +455,8 @@ public abstract partial class Monster : CharacterBody3D
 		_modelPivot.AddChild(model);
 		_anim = model.FindChildren("*", "AnimationPlayer", true, false) is { Count: > 0 } aps
 			? (AnimationPlayer)aps[0] : null;
+		SetLoop(IdleAnim); // покой/локомоция должны зацикливаться (клипы импортированы как one-shot)
+		SetLoop(MoveAnim);
 
 		// AABB считаем в ЛОКАЛЬНОЙ системе модели (малые числа): монстр стоит на мировых ~−18000,
 		// поэтому глобальные трансформы в float32 теряют точность — берём только локальные цепочки.
@@ -441,10 +466,12 @@ public abstract partial class Monster : CharacterBody3D
 			model.RotationDegrees = new Vector3(ModelUprightPitchDeg, 0, 0);
 			b = RotateAabb(b, model.Basis);
 		}
-		// Модель волка низкая и длинная — масштабируем по ГОРИЗОНТАЛЬНОМУ габариту (длине), чтобы
-		// вписать в коридор; масштаб по высоте раздул бы её в разы (см. design.md).
+		// Гуманоид — масштаб по высоте (TargetHeight). Низкая/длинная модель (ScaleByLength) —
+		// по горизонтальному габариту, иначе масштаб по высоте раздул бы её (см. design.md).
 		float span = Mathf.Max(b.Size.X, b.Size.Z);
-		float scale = span > 0.0001f ? TargetLength / span : 1.0f;
+		float scale = ScaleByLength
+			? (span > 0.0001f ? TargetLength / span : 1.0f)
+			: (b.Size.Y > 0.0001f ? TargetHeight / b.Size.Y : 1.0f);
 		model.Scale = Vector3.One * scale;
 		model.Position = new Vector3(
 			-(b.Position.X + b.Size.X * 0.5f) * scale,
