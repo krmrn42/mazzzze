@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://src/InventoryHud.cs" id="5_inventory"]
 [ext_resource type="Script" path="res://src/ViewfinderHud.cs" id="6_viewfinder"]
 [ext_resource type="Script" path="res://src/PhotoEnterHud.cs" id="7_photoenter"]
+[ext_resource type="Script" path="res://src/MonsterSpawner.cs" id="8_spawner"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ig7tw"]
 size = Vector3(256, 1, 256)
@@ -77,6 +78,9 @@ script = ExtResource("3_mzd")
 
 [node name="ChunkManager" type="Node3D" parent="." unique_id=77425718]
 script = ExtResource("2_0xm2m")
+
+[node name="MonsterSpawner" type="Node3D" parent="."]
+script = ExtResource("8_spawner")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1995028696]
 environment = SubResource("Environment_ig7tw")

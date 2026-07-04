@@ -51,7 +51,8 @@ maze-prototype-1/
 │   ├── body.tres              # Player body material (orange)
 │   ├── eye.tres               # Player eye material (white, emissive)
 │   ├── pupil.tres             # Player pupil material (black, rim)
-│   ├── mob.glb                # Enemy 3D model
+│   ├── black_myth_wukong.glb  # Wukong monster model (wolf) — US-20
+│   ├── mob.glb                # Old enemy model (unused; Mob stub superseded)
 │   ├── mob.blend              # Enemy source (Blender)
 │   ├── mob_body.tres          # Enemy body material (blue)
 │   ├── mob_eye.tres           # Enemy eye material (red, emissive)
@@ -71,7 +72,9 @@ maze-prototype-1/
 │   │   └── REQ-0016-base-item-pickup/         # Pickup (F-29..30)
 │   ├── REQ-0013-vintage-camera/ # Vintage camera (US-13, F-20..23) — IMPLEMENTED
 │   ├── REQ-0017-photo/       # Photo portal item (US-17, F-31..34) — IMPLEMENTED
-│   └── REQ-0018-localization/ # i18n (US-18, F-35..38) — planned
+│   ├── REQ-0018-localization/ # i18n (US-18, F-35..38) — planned
+│   └── REQ-0019-base-monster/ # Monster template (US-19, F-39..43) — IMPLEMENTED
+│       └── REQ-0020-base-monster-wukong/ # Wukong (US-20, F-44..46) — IMPLEMENTED
 └── src/
     ├── Player.cs              # Player controller
     ├── MazeData.cs            # Maze world data & procedural generation
@@ -89,7 +92,11 @@ maze-prototype-1/
     ├── ItemStar.cs            # Shared emissive star visual
     ├── ViewfinderHud.cs       # Vintage-camera viewfinder + timer + focus (Control)
     ├── PhotoEnterHud.cs       # Photo walk-into progress vignette + teleport flash (Control)
-    └── Mob.cs                 # Enemy controller (placeholder)
+    ├── Monster.cs             # Base monster template: perception, FSM, pathfinding, contact (US-19)
+    ├── Wukong.cs              # First concrete monster: wolf, contact (US-20)
+    ├── MonsterSpawner.cs      # Minimal debug spawner (places Wukong near start)
+    ├── DamageHud.cs           # Red hit-flash overlay (no health system yet)
+    └── Mob.cs                 # Old enemy stub (superseded by Monster/Wukong, unused)
 ```
 
 ## 4. Scene Hierarchy (Runtime)
@@ -112,12 +119,15 @@ Main (Node3D)                              - main.tscn, root
 ├── ChunkManager (Node3D + ChunkManager.cs) - orchestrates chunk lifecycle
 │   └── Chunk (xN, dynamic)              - instances of chunk.tscn
 │       └── GridMap (cell_size=3.6,1,3.6, cell_center_y=false) - renders Floor/Wall tiles
+├── MonsterSpawner (Node3D + MonsterSpawner.cs) - minimal debug spawner (§5.8)
+├── Wukong (xN, CharacterBody3D + Wukong.cs) - monsters, spawned under Main (persistent) (§5.8)
 ├── WorldEnvironment                      - procedural sky, ambient light
 └── HUD (CanvasLayer)
     ├── Minimap (Control + Minimap.cs)    - top-left mini-map overlay (§5.10)
     ├── Inventory (Control + InventoryHud.cs) - bottom-right inventory + item-system hub (§5.11)
     ├── Viewfinder (Control + ViewfinderHud.cs) - camera viewfinder overlay (§5.11)
-    └── PhotoEnter (Control + PhotoEnterHud.cs) - photo walk-into vignette/flash (§5.11)
+    ├── PhotoEnter (Control + PhotoEnterHud.cs) - photo walk-into vignette/flash (§5.11)
+    └── DamageFlash (Control + DamageHud.cs) - red hit-flash (created by spawner) (§5.8)
 ```
 
 ## 5. Subsystem Specifications
@@ -410,17 +420,24 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 - Tonemap: Filmic (mode 3), white 6.0.
 - SDFGI: disabled
 
-### 5.8 Mob - Enemy (Placeholder)
+### 5.8 Monsters - Base Template and Wukong (US-19 / US-20)
 
-**File:** `src/Mob.cs`
-**Type:** `CharacterBody3D`
-**Scene:** `mob.tscn` (not instantiated in main scene)
+**Files:** `src/Monster.cs` (abstract template), `src/Wukong.cs` (concrete), `src/MonsterSpawner.cs`, `src/DamageHud.cs`.
+**Requirements:** `REQ-0019-base-monster/` (F-39..43), `REQ-0020-base-monster-wukong/` (F-44..46). See those `design.md` for full detail.
 
-- Collision: BoxShape3D(2, 1, 2)
-- Model: art/mob.glb with separate body (blue) and eye (red emissive) materials
-- Initialize(startPos, playerPos): faces player, sets forward velocity with random speed [10, 15]
-- OnVisibilityNotifierScreenExited(): self-destructs via QueueFree()
-- Not currently spawned - code exists but no spawner implemented.
+**`Monster` (abstract `CharacterBody3D`)** — the template; a concrete type sets params in its ctor.
+- **Registry (F-43):** static `Monster.All`, add/remove in `_EnterTree`/`_ExitTree` (mirrors `WorldItem.All`). Monsters live under `Main` → **persistent**, not chunk-bound.
+- **Perception (F-40):** `CanSee(target)` = in vision cone (`VisionRange` + `VisionFovDeg` around current facing) **and** clear LoS — `DirectSpaceState.IntersectRay` from eyes, wall mask 1, excluding self + player. Same check finds the player and lure items.
+- **FSM (F-41)** in `_PhysicsProcess`: `Cycle` (patrol) / `Threat` (chase) / `Stun` / `Distract`. Priority Stun > player-visibility > distraction; no memory after disruption (→ `Cycle`).
+- **Movement:** BFS pathfinding over `MazeData.IsFloor` cells (`FindPath`), following cell centres + direct final-approach; patrol restricted to a segment. Gravity + `MoveAndSlide`.
+- **Contact damage (F-42):** planar touch distance, throttled by `ContactInterval`; emits `PlayerHit(damage)` signal + `DamageHud` red flash + log. No health system yet (monster only reports the hit).
+- **Model:** `BuildBody` instantiates the type's glb, computes a **local-space** AABB (avoids float32 loss at world −18000), scales by **length** (`TargetLength`) for a low/long model, grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis.
+
+**`Wukong`** — wolf, contact delivery. Defaults: vision 18 wu / 100°, patrol 2.0 / chase 4.0 wu/s, damage 10, chase-drop 57.6 wu (1 chunk), contact 0.7 s, stun 2.5 s, segment 16 cells, `art/black_myth_wukong.glb`.
+
+**`MonsterSpawner`** (`Main/MonsterSpawner`) — minimal **debug** spawner: places a few Wukong near the player start and creates the `DamageHud`. A real spawner is a future feature.
+
+**Not implemented / hooks:** `Stun()` is public but has no trigger yet (future tennis ball, IDEA-0025); distraction reacts to any `WorldItem` (no dedicated lure type); Ranged delivery, Small size, player health system, and model animations are future. The old `Mob.cs`/`mob.tscn` charge stub is **superseded** (present, unused).
 
 ### 5.9 Art Assets
 
