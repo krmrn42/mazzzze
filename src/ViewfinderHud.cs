@@ -14,7 +14,7 @@ using System;
 // внешняя отмена (drop/deactivate) → Cancel().
 public partial class ViewfinderHud : Control
 {
-	[Export] public float TickSeconds = 2.0f;       // длительность тика таймера (F-22)
+	[Export] public float TickSeconds = 0.6667f;    // длительность тика таймера (F-22) — отсчёт ускорен ×3
 	[Export] public int StartCount = 3;             // 3 → 2 → 1
 	[Export] public float FocusMinDistance = 1.8f;  // мин. фокусное = 3 корпуса × 0.6 (F-23)
 	[Export] public float ViewfinderFov = 50.0f;    // суженный FOV объектива (F-21)

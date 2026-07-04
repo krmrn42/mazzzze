@@ -48,8 +48,8 @@ public partial class InventoryHud : Control
 	[Export] public float PickupArcHeight = 1.0f;       // высота параболы обратной звезды, м
 	[Export] public float PickupFlightDuration = 0.6f;  // время полёта звёздочки к игроку, сек
 
-	// Вход в фотографию (REQ-0017 / F-33): сколько секунд идти вперёд для переноса.
-	[Export] public float EnterDuration = 2.0f;
+	// Вход в фотографию (REQ-0017 / F-33): сколько секунд идти вперёд для переноса (сокращено ×1.5).
+	[Export] public float EnterDuration = 1.3333f;
 
 	// Палитра в тон миникарте (тёплый пергамент).
 	private static readonly Color PanelBg      = new(0.10f, 0.08f, 0.06f, 0.85f);
@@ -395,6 +395,9 @@ public partial class InventoryHud : Control
 		var photo = new PhotoItem(pos, _player.CameraYawDeg, _player.CameraPitchDeg);
 		int slot = _reservedSlot;
 		ConsumeActivated(photo);
+		_player.PlayPickupGesture(); // жест подбора: игроку очевидно, что в инвентаре новый предмет
+		_flashSlot = slot;           // вспышка на ячейке, куда легла фотография (F-30)
+		_flashT = 1.0f;
 		GD.Print($"[Camera] Photo created at ({pos.X:F1}, {pos.Y:F1}) yaw={photo.CapturedYawDeg:F0} → slot {slot}");
 	}
 
@@ -643,7 +646,8 @@ public partial class InventoryHud : Control
 
 			if (item.Icon != null)
 			{
-				var pad = new Vector2(2, 2);
+				// Минимальный отступ от краёв ячейки — 3% высоты (предмет заполняет ячейку почти целиком).
+				var pad = new Vector2(CellSize * 0.03f, CellSize * 0.03f);
 				DrawTextureRect(item.Icon, new Rect2(cell.Position + pad, cell.Size - pad * 2), false);
 			}
 

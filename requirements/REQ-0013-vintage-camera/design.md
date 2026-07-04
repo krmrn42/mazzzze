@@ -44,7 +44,7 @@
 
 ## Таймер (F-22)
 
-- `[Export] float TickSeconds = 2.0f`, `[Export] int StartCount = 3`. В `_PhysicsProcess`
+- `[Export] float TickSeconds = 0.6667f`, `[Export] int StartCount = 3`. В `_PhysicsProcess`
   (фикс. такт) копится `_elapsed`; цифра = `StartCount - floor(_elapsed/TickSeconds)`
   (3→2→1). Срабатывание при `_elapsed ≥ TickSeconds*StartCount`; **0 не показывается**.
 
@@ -63,14 +63,15 @@
   `CapturedYawDeg` = `Player.CameraYawDeg`, `CapturedPitchDeg` = `Player.CameraPitchDeg`
   (наклон основной, top-down камеры — чтобы после переноса вид сверху сохранился), и
   `ConsumeActivated(photo)`: уничтожает камеру, кладёт фотографию в **тот же** забронированный
-  слот (F-19a → REQ-0017).
+  слот (F-19a → REQ-0017). Затем `Player.PlayPickupGesture()` + подсветка ячейки (`_flashSlot`) —
+  чтобы игрок заметил появление нового предмета.
 - Прерывания: `Deactivate`/`DropActivated` в `InventoryHud` вызывают `ViewfinderHud.Cancel()`.
 
 ## Параметры (экспорт `ViewfinderHud`)
 
 | Имя | Умолчание | Смысл |
 |-----|-----------|-------|
-| `TickSeconds` | 2.0 | длительность тика отсчёта |
+| `TickSeconds` | 0.6667 | длительность тика отсчёта |
 | `StartCount` | 3 | стартовое число (3→2→1) |
 | `FocusMinDistance` | 1.8 | мин. фокусное (3 корпуса × 0.6) |
 | `ViewfinderFov` | 50 | FOV объектива |
