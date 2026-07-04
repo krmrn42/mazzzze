@@ -40,6 +40,9 @@ public abstract partial class Monster : CharacterBody3D
 	[Export] public float Gravity = 15.0f;
 	[Export] public float ModelYawOffsetDeg = 180.0f;// forward модели vs -Z у LookAt (калибруется)
 	[Export] public float ModelUprightPitchDeg = 0.0f; // коррекция up-оси ассета (0 — не нужна)
+	[Export] public string MoveAnim = "";            // зацикленный клип локомоции/покоя
+	[Export] public string AttackAnim = "";          // одноразовый клип атаки (на контакте)
+	[Export] public float MoveAnimBaseScale = 1.0f;  // темп клипа локомоции на скорости патруля
 	public float EyeHeight = 1.2f;                    // выставляется по фактической высоте модели
 	public float BodyHeight = 1.0f;
 
@@ -48,6 +51,7 @@ public abstract partial class Monster : CharacterBody3D
 
 	private Vector2I _segMin, _segMax; // границы сегмента патруля, клетки [min, max)
 	private Node3D _modelPivot;
+	private AnimationPlayer _anim;
 	protected Player Player;
 	private DamageHud _damageHud;
 
@@ -152,6 +156,29 @@ public abstract partial class Monster : CharacterBody3D
 
 		FollowPath(speed, dt);
 		_hasApproach = false;
+		UpdateAnim(new Vector2(Velocity.X, Velocity.Z).Length());
+	}
+
+	// Управление анимацией: пока играет одноразовая атака — не перебиваем; иначе крутим
+	// зацикленный клип локомоции, ускоряя темп с фактической скоростью движения.
+	private void UpdateAnim(float planarSpeed)
+	{
+		if (_anim == null)
+			return;
+		if (_anim.CurrentAnimation == AttackAnim && _anim.IsPlaying())
+			return;
+		if (!string.IsNullOrEmpty(MoveAnim) && _anim.CurrentAnimation != MoveAnim)
+			_anim.Play(MoveAnim);
+		_anim.SpeedScale = Mathf.Clamp(MoveAnimBaseScale * (0.5f + planarSpeed / Mathf.Max(PatrolSpeed, 0.1f)), 0.4f, 3.0f);
+	}
+
+	// Проиграть клип атаки (одноразовый) — при контакте с игроком.
+	private void PlayAttack()
+	{
+		if (_anim == null || string.IsNullOrEmpty(AttackAnim) || _anim.CurrentAnimation == AttackAnim)
+			return;
+		_anim.SpeedScale = 1.0f;
+		_anim.Play(AttackAnim);
 	}
 
 	private void EnterCycle()
@@ -186,6 +213,7 @@ public abstract partial class Monster : CharacterBody3D
 			return;
 		_contactCd = ContactInterval;
 		_damageHud?.Flash();
+		PlayAttack(); // клип укуса/атаки
 		EmitSignal(SignalName.PlayerHit, ContactDamage); // будущая система здоровья
 		GD.Print($"[Monster] '{TypeId}' CONTACT → player -{ContactDamage:F0} hp");
 	}
@@ -402,6 +430,8 @@ public abstract partial class Monster : CharacterBody3D
 		if (packed != null) model = packed.Instantiate<Node3D>();
 		model ??= new Node3D();
 		_modelPivot.AddChild(model);
+		_anim = model.FindChildren("*", "AnimationPlayer", true, false) is { Count: > 0 } aps
+			? (AnimationPlayer)aps[0] : null;
 
 		// AABB считаем в ЛОКАЛЬНОЙ системе модели (малые числа): монстр стоит на мировых ~−18000,
 		// поэтому глобальные трансформы в float32 теряют точность — берём только локальные цепочки.

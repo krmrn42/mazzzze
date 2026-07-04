@@ -431,7 +431,8 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 - **FSM (F-41)** in `_PhysicsProcess`: `Cycle` (patrol) / `Threat` (chase) / `Stun` / `Distract`. Priority Stun > player-visibility > distraction; no memory after disruption (→ `Cycle`).
 - **Movement:** BFS pathfinding over `MazeData.IsFloor` cells (`FindPath`), following cell centres + direct final-approach; patrol restricted to a segment. Gravity + `MoveAndSlide`.
 - **Contact damage (F-42):** planar touch distance, throttled by `ContactInterval`; emits `PlayerHit(damage)` signal + `DamageHud` red flash + log. No health system yet (monster only reports the hit).
-- **Model:** `BuildBody` instantiates the type's glb, computes a **local-space** AABB (avoids float32 loss at world −18000), scales by **length** (`TargetLength`) for a low/long model, grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis.
+- **Model:** `BuildBody` instantiates the type's glb, computes a **local-space** AABB (avoids float32 loss at world −18000), scales by **length** (`TargetLength`) for a low/long model, grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis; `ModelPivot` faces movement via `LookAt` + `ModelYawOffsetDeg`.
+- **Animation:** `UpdateAnim`/`PlayAttack` drive the model's `AnimationPlayer` — `MoveAnim` (looped, speed-scaled by velocity) + `AttackAnim` (one-shot on contact). The wukong glb ships only combat clips (no walk/idle cycle), so Wukong loops `atk01_loop` for locomotion and plays `bite01` on contact; nose is along model X → `ModelYawOffsetDeg` = 90°.
 
 **`Wukong`** — wolf, contact delivery. Defaults: vision 18 wu / 100°, patrol 2.0 / chase 4.0 wu/s, damage 10, chase-drop 57.6 wu (1 chunk), contact 0.7 s, stun 2.5 s, segment 16 cells, `art/black_myth_wukong.glb`.
 

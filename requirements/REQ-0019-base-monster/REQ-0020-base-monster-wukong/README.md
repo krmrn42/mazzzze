@@ -36,6 +36,7 @@
 | F-45 | Патруль сегмента лабиринта | [02-behavior-logic.md](./02-behavior-logic.md) |
 | F-46 | Преследование игрока и условие прекращения | [02-behavior-logic.md](./02-behavior-logic.md) |
 | —   | Параметры Wukong по умолчанию | [03-params-data.md](./03-params-data.md) |
+| —   | Анимации (ориентация, локомоция, атака) | [04-animation.md](./04-animation.md) |
 
 **Реализация (HOW):** [design.md](./design.md) · глобальный контекст — [TECH_SPEC.md](../../TECH_SPEC.md)
 

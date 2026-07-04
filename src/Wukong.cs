@@ -30,6 +30,12 @@ public partial class Wukong : Monster
 		DistractReachRadius = 1.5f;
 		SegmentCells = 16;            // сегмент патруля = 1 чанк (F-45)
 
-		ModelYawOffsetDeg = 180.0f;   // калибруется по forward модели
+		ModelYawOffsetDeg = 90.0f;    // нос волка вдоль X модели → выравниваем по движению
+
+		// Модель содержит только боевые клипы (walk/idle нет). Зацикленный боевой луп
+		// используем как локомоцию (движение лап/корпуса), укус — на контакте.
+		MoveAnim = "SK_mgd_xiaotian|AS_mgd_xiaotian_atk01_loop";
+		AttackAnim = "SK_mgd_xiaotian|AS_mgd_xiaotian_bite01";
+		MoveAnimBaseScale = 1.0f;
 	}
 }
