@@ -1,8 +1,14 @@
-<Project Sdk="Godot.NET.Sdk/4.6.3">
+<Project Sdk="Godot.NET.Sdk/4.7.0">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>mazeprototype1</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Map engine: the maze-gen region façade (PlayersWorlds.Maps, net8.0,
+         BCL-only). Referenced as a sibling checkout for local dev; a NuGet/DLL
+         package is the follow-up for CI/release. -->
+    <ProjectReference Include="../../krmrn42/maze-gen/src/PlayersWorlds.Maps.csproj" />
+  </ItemGroup>
 </Project>

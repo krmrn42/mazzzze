@@ -1,69 +1,89 @@
 using Godot;
-using System;
+using PlayersWorlds.Maps.World;
+using MgVector = PlayersWorlds.Maps.Vector;
 
+// Map engine (mazzzze v1). Sources the map from the maze-gen region façade
+// instead of a coordinate hash: it generates ONE real region at startup with a
+// NullRegionStore (regenerate each run, no persistence yet) and answers every
+// map query — passability, chunk data, spawn/goal — from the resident
+// RegionView. The public surface is unchanged, so ChunkManager, Minimap, and
+// Player keep working; only the source of truth moved.
 public partial class MazeData : Node
 {
 	public static MazeData Instance { get; private set; }
 	public override void _EnterTree() { Instance = this; }
 
-	public const int WorldWidth = 10000;
-	public const int WorldHeight = 10000;
+	// Region size in MAZE cells (before Block expansion). The rendered Block
+	// region is larger; its size comes from the façade (see RegionSize).
+	private const int RegionMazeSide = 32;
+	// Fixed world seed so the single region is stable across runs; tune freely.
+	private const int WorldSeed = 12345;
+
 	// Ширина коридора = 6 × диаметр игрока (коллизия: сфера r=0.3 → Ø0.6) = 3.6
 	public const float CellWorldSize = 3.6f;  // размер клетки в мировых единицах
 	// Высота стен: уходят высоко в небо (canyon-style), полностью блокируют обзор
 	public const float WallHeight = 30.0f;
 
-	public Vector2I PlayerStartCell { get; private set; }
-	public float WorldOffsetX => -WorldWidth * CellWorldSize / 2.0f;
-	public float WorldOffsetZ => -WorldHeight * CellWorldSize / 2.0f;
+	private RegionView _region;
+	private Vector2I _entrance;
+	private Vector2I _exit;
 
-	// Fixed entrance/exit cells (see the special cases in IsFloor). Used by the mini-map
-	// to place the entrance/exit markers once the player has visited them.
-	public static Vector2I EntranceCell => new Vector2I(1, 0);
-	public static Vector2I ExitCell => new Vector2I(WorldWidth - 2, WorldHeight - 1);
+	public Vector2I PlayerStartCell { get; private set; }
+
+	// The rendered region size in Block cells (replaces the old fixed
+	// 10000×10000 world bounds).
+	public Vector2I RegionSize =>
+		_region == null ? Vector2I.Zero
+			: new Vector2I(_region.Size.X, _region.Size.Y);
+
+	// Centre the region on the world origin.
+	public float WorldOffsetX => -RegionSize.X * CellWorldSize / 2.0f;
+	public float WorldOffsetZ => -RegionSize.Y * CellWorldSize / 2.0f;
+
+	// Entrance/exit cells come from the region's POIs (the longest-path ends).
+	public static Vector2I EntranceCell =>
+		Instance?._entrance ?? Vector2I.Zero;
+	public static Vector2I ExitCell =>
+		Instance?._exit ?? Vector2I.Zero;
 
 	public override void _Ready()
 	{
-		// Вход и выход фиксированы
-		PlayerStartCell = new Vector2I(1, 1);
-		GD.Print($"[MazeData] World {WorldWidth}x{WorldHeight}, cellSize={CellWorldSize}, offset=({WorldOffsetX:F0}, {WorldOffsetZ:F0})");
+		var world = new World(
+			new NullRegionStore(), WorldSeed,
+			new MgVector(RegionMazeSide, RegionMazeSide));
+		_region = world.GetOrCreate(new RegionAddress(new MgVector(0, 0)));
+
+		var entrance = FindPoi(PoiKind.Entrance);
+		var exit = FindPoi(PoiKind.Exit);
+		_entrance = new Vector2I(entrance.X, entrance.Y);
+		_exit = new Vector2I(exit.X, exit.Y);
+		PlayerStartCell = _entrance;
+
+		GD.Print($"[MazeData] region {RegionSize.X}x{RegionSize.Y} block cells, " +
+			$"seed={WorldSeed}, entrance={_entrance}, exit={_exit}, " +
+			$"offset=({WorldOffsetX:F0}, {WorldOffsetZ:F0})");
 	}
 
-	// Детерминированная проверка: является ли клетка коридором (false = стена)
+	private MgVector FindPoi(PoiKind kind)
+	{
+		foreach (var poi in _region.Pois)
+		{
+			if (poi.Kind == kind) return poi.Local;
+		}
+		return new MgVector(0, 0);
+	}
+
+	// Детерминированная проверка: является ли клетка коридором (false = стена).
+	// Now answered by the region: outside the region reads as wall.
 	public static bool IsFloor(int wx, int wz)
 	{
-		// Границы — всегда стена
-		if (wx <= 0 || wz <= 0 || wx >= WorldWidth - 1 || wz >= WorldHeight - 1)
-			return false;
-
-		// Вход
-		if (wx == 1 && wz == 0) return true;
-		// Выход
-		if (wx == WorldWidth - 2 && wz == WorldHeight - 1) return true;
-
-		// Все нечётные-нечётные клетки — коридоры (гарантирует связность)
-		if ((wx & 1) == 1 && (wz & 1) == 1)
-			return true;
-
-		// Хеш для стен между коридорами
-		uint h = (uint)(wx * 0x45d9f3b + wz * 0x119de1f3);
-		h = (h ^ (h >> 16)) * 0x85ebca6b;
-		h = (h ^ (h >> 13)) * 0xc2b2ae35;
-		h = h ^ (h >> 16);
-
-		// Стена между двумя коридорами по X (чёт X, нечёт Z): 70% проход
-		if ((wx & 1) == 0 && (wz & 1) == 1)
-			return (h % 100) < 70;
-
-		// Стена между двумя коридорами по Z (нечёт X, чёт Z): 70% проход
-		if ((wx & 1) == 1 && (wz & 1) == 0)
-			return (h % 100) < 70;
-
-		// Столб (чёт-чёт): 5% проход
-		return (h % 100) < 5;
+		var region = Instance?._region;
+		if (region == null) return false;
+		var cell = new MgVector(wx, wz);
+		return region.Contains(cell) && region.CellAt(cell).IsPassable;
 	}
 
-	// Генерация данных чанка
+	// Генерация данных чанка: 0 = пол (коридор), 1 = стена.
 	public int[,] GetChunkData(int chunkX, int chunkZ, int chunkSize)
 	{
 		int[,] data = new int[chunkSize, chunkSize];
