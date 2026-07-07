@@ -15,7 +15,7 @@ public partial class MazeData : Node
 
 	// Region footprint per side, in world (Block) cells. This is exactly the
 	// size the façade returns (see RegionSize); the corridor count within it is
-	// derived from the recipe. 25 = a 12-cell maze rendered at square 1×1.
+	// derived from the recipe. 15 = a 7-cell maze rendered at square 1×1.
 	private const int RegionFootprintSide = 15;
 	// The world seed decides the maze. Set RandomizeEachLaunch = false and use
 	// FixedSeed for a reproducible maze; true gives a fresh maze every start.
