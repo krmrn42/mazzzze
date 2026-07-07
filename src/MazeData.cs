@@ -13,9 +13,10 @@ public partial class MazeData : Node
 	public static MazeData Instance { get; private set; }
 	public override void _EnterTree() { Instance = this; }
 
-	// Region size in MAZE cells (before Block expansion). The rendered Block
-	// region is larger; its size comes from the façade (see RegionSize).
-	private const int RegionMazeSide = 32;
+	// Region footprint per side, in world (Block) cells. This is exactly the
+	// size the façade returns (see RegionSize); the corridor count within it is
+	// derived from the recipe. 65 = a 32-cell maze rendered at square 1×1.
+	private const int RegionFootprintSide = 65;
 	// Fixed world seed so the single region is stable across runs; tune freely.
 	private const int WorldSeed = 12345;
 
@@ -48,13 +49,13 @@ public partial class MazeData : Node
 
 	public override void _Ready()
 	{
-		// Cell shape is OUR (client) setting: square 1×1 Block cells so tiles
-		// are square in world space. The 2×1 ratio the library uses for ASCII
-		// debug rendering is not wanted here.
+		// The world is created once with our footprint and default recipe.
+		// Recipe is OUR (client) setting: a Maze with square 1×1 cells, so
+		// tiles are square in world space.
 		var world = new World(
 			new NullRegionStore(), WorldSeed,
-			new MgVector(RegionMazeSide, RegionMazeSide),
-			cellSize: new MgVector(1, 1), wallSize: new MgVector(1, 1));
+			new MgVector(RegionFootprintSide, RegionFootprintSide),
+			RegionRecipe.Maze.WithCells(1));
 		_region = world.GetOrCreate(new RegionAddress(new MgVector(0, 0)));
 
 		var entrance = FindPoi(PoiKind.Entrance);
