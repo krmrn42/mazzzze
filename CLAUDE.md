@@ -8,8 +8,9 @@ A Godot 4.6 3D maze game prototype using C# (.NET 8.0) with the Jolt Physics eng
 
 ## Build & Run
 
-The Godot 4.6.3 mono editor lives at:
-`/home/user13/Apps/Godot_v4.6.3-stable_mono_linux_x86_64/Godot_v4.6.3-stable_mono_linux.x86_64`
+The project targets **Godot 4.7** mono (`Godot.NET.Sdk/4.7.0`). The editor is a repo-local,
+git-ignored download (there is a `godot` shell alias to it):
+`.bin/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64`
 
 ```bash
 # 0. Build the C# project (MUST run after any .cs change before launching Godot)
@@ -17,7 +18,7 @@ dotnet build
 dotnet build -c ExportRelease          # release configuration
 
 # Convenience handle used in the examples below
-GODOT="/home/user13/Apps/Godot_v4.6.3-stable_mono_linux_x86_64/Godot_v4.6.3-stable_mono_linux.x86_64"
+GODOT="$PWD/.bin/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64"   # run from the repo root
 
 # 1. Import assets (only needed after adding/changing .tscn/.tres/.glb, or a fresh checkout)
 "$GODOT" --headless --import
@@ -94,12 +95,12 @@ Main (Node3D)
 
 ### Maze geometry
 
-- **MazeData** is a stateless singleton. `IsFloor(wx, wz)` determines any cell in O(1) via a murmur3 hash — no world array is stored. The maze is 10 000×10 000 cells.
+- **MazeData** is a singleton backed by the **maze-gen region façade** (`PlayersWorlds.Maps`). At startup it generates **one real region** (footprint `RegionFootprintSide` = 15 world cells; `RegionRecipe.Maze` + Aldous-Broder; square 1×1 cells) with a `NullRegionStore` (regenerated each run — `RandomizeEachLaunch = true` — no persistence yet). `IsFloor(wx, wz)` answers O(1) from the resident `RegionView` (`region.CellAt(cell).IsPassable`); cells outside the region read as wall. The maze size **is** the region footprint (currently 15×15 cells) — no longer a fixed 10 000×10 000 bound, and no longer a murmur3 hash.
 - **CellWorldSize = 3.6** world units (corridor width = 6× player diameter). **WallHeight = 30**.
-- **WorldOffset = −18 000** in X and Z (maze centred at origin). Player start cell (1, 1) → world (−17994.6, 0.3, −17994.6).
+- **WorldOffset** centres the region on the world origin and is now **computed at runtime** from the region size (was a fixed `−18 000` constant): `WorldOffsetX/Z = −RegionSize × CellWorldSize / 2` ≈ **−27** for the 15×15 footprint. It returns 0 until `MazeData._Ready` builds the region, so nothing may read it before then. Player start = the region's **entrance POI** cell (varies per seed), landing near the origin — e.g. world ≈ (7.2, 0.3, −14.4).
 - **Chunk streaming**: `ChunkManager` keeps a 3×3 (LoadDistance=1) grid of 16×16-cell chunks loaded. `UpdateChunks()` is called every `Player._PhysicsProcess`.
 - **MazeTiles.tres**: `MeshLibrary` with exactly 2 items — id 0 = Floor, id 1 = Wall.
-- **Tile overlap (seam fix):** floor/wall *meshes* are 3.66 wide; GridMap `cell_size` and collision shapes stay 3.6. The 0.03 overlap hides float32 precision cracks at the −18 000 world coords. World-space triplanar mapping makes the coplanar z-fight invisible.
+- **Tile overlap (seam fix):** floor/wall *meshes* are 3.66 wide; GridMap `cell_size` and collision shapes stay 3.6. The 0.03 overlap was added to hide float32 precision cracks back when the world rendered at ≈ −18 000; now the façade centres the maze near the origin (≈ ±27), where float32 has ample precision, so that problem is gone and the overlap is merely **defensive/harmless**. World-space triplanar mapping still keeps the coplanar z-fight invisible.
 
 ### Player controller (`src/Player.cs`)
 
@@ -141,7 +142,7 @@ Top-left HUD overlay, procedurally drawn — no textures. Implements `requiremen
 - **Movement**: BFS pathfinding over `MazeData.IsFloor` cells (`FindPath`), following cell centres with a direct final-approach; patrol restricted to a segment. Robust around corners. Gravity + `MoveAndSlide`; `ModelPivot` faces movement via `LookAt` + `ModelYawOffsetDeg` (180° for the ifrit — forward is +Z like the player rig).
 - **Animation** (`UpdateAnim`/`PlayAttack`): base plays the model's `AnimationPlayer` clips by name — `IdleAnim` (still) / `MoveAnim` (moving, looping + speed-scaled by velocity) / `AttackAnim` (one-shot on contact) / `StunAnim` (one-shot on `Stun()`). Idle/Move loops are forced (`SetLoop`, since glb clips import as one-shot). The ifrit glb ships a full set — `Idle`, `Run`, `Attack`, `BeHit` (`Monster_YiFuLiTe_*`).
 - **Contact damage** (F-42/F-44): planar touch distance, throttled by `ContactInterval`; emits `PlayerHit(damage)` signal + `DamageHud` red flash + log (no health system yet).
-- **Model scaling**: local-space AABB (avoids float32 loss at world −18000). Humanoid → scaled by **height** (`TargetHeight`); a low/long model would set `ScaleByLength` (fits by horizontal span). `ModelUprightPitchDeg` corrects a mis-authored up-axis (0 for the ifrit).
+- **Model scaling**: local-space AABB (computed via local transform chains, not global coords — was needed against float32 loss at world −18000, still sound now that the world sits near the origin). Humanoid → scaled by **height** (`TargetHeight`); a low/long model would set `ScaleByLength` (fits by horizontal span). `ModelUprightPitchDeg` corrects a mis-authored up-axis (0 for the ifrit).
 - **Ifrit defaults**: vision 18 wu / 100°, patrol 2.0 / chase 4.0, damage 10, chase-drop 57.6 wu (1 chunk), contact 0.7 s, stun 2.5 s, segment 16 cells, `art/ifrit.glb`.
 - **Spawn**: `MonsterSpawner` (`src/MonsterSpawner.cs`, `Main/MonsterSpawner`) is a **minimal debug spawner** — places a few Ifrit near the player start and creates `DamageHud`. A real spawner is a future feature.
 - **Not implemented / hooks**: `Stun()` is public but has no trigger (future tennis ball, IDEA-0025); distraction reacts to any `WorldItem` (no dedicated lure type); Ranged delivery + Small size are future; player health is a future feature (monster only reports hits); no `Death` clip hooked (no death state yet). The old `Mob.cs`/`mob.tscn` charge stub is **superseded** (still present, unused).

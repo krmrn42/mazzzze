@@ -10,11 +10,15 @@ guidance (most technical detail lives there).
 # 1. Build C# (MUST run after any .cs change before Godot)
 dotnet build
 
-# 2. Import assets (only after new .tscn/.tres/.glb or fresh clone)
-/home/user13/Apps/Godot_v4.6.3-stable_mono_linux_x86_64/Godot_v4.6.3-stable_mono_linux.x86_64 --headless --import
+# Editor: Godot 4.7 mono (Godot.NET.Sdk/4.7.0), a repo-local git-ignored download.
+GODOT="$PWD/.bin/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64"
+
+# 2. Import assets (REQUIRED after new/changed .tscn/.tres/.glb or a fresh clone —
+#    .godot/imported/ is git-ignored, so glb models are invisible until re-imported)
+"$GODOT" --headless --import
 
 # 3. Run (DISPLAY needed)
-DISPLAY=:0 /home/user13/Apps/Godot_v4.6.3-stable_mono_linux_x86_64/Godot_v4.6.3-stable_mono_linux.x86_64 --path .
+DISPLAY=:0 "$GODOT" --path .
 ```
 
 ## Verification (no GUI)
@@ -22,7 +26,7 @@ DISPLAY=:0 /home/user13/Apps/Godot_v4.6.3-stable_mono_linux_x86_64/Godot_v4.6.3-
 After any behaviour change, verify with:
 
 ```bash
-dotnet build && timeout 8 /home/user13/Apps/Godot_v4.6.3-stable_mono_linux_x86_64/Godot_v4.6.3-stable_mono_linux.x86_64 --headless --path . 2>&1 | grep -iE "Player|Chunk|error|exception"
+dotnet build && timeout 8 "$GODOT" --headless --path . 2>&1 | grep -iE "Player|Chunk|error|exception"
 ```
 
 Expected output includes `[Player] Start cell=…` and `[ChunkManager] LOAD` lines, with no
@@ -46,9 +50,10 @@ tall with an explicit `mesh_transform` Y=+15 offset. Changing `cell_size.y` or
 `cell_center_y` without understanding this will push the floor up and drop the player.
 
 **Tile overlap (seam fix).** Floor and wall *meshes* are 3.66 wide in `MazeTiles.tres` but
-GridMap `cell_size` is 3.6 and collision shapes are 3.6. This 0.03 overlap per side hides
-float32 precision cracks at the huge world coords (~-18000). Never resize collision shapes
-to match the meshes.
+GridMap `cell_size` is 3.6 and collision shapes are 3.6. This 0.03 overlap per side was added
+to hide float32 precision cracks back when the maze rendered at huge world coords (~-18000);
+the region façade now centres it near the origin (~±27), so the cracks no longer occur and the
+overlap is merely defensive. Never resize collision shapes to match the meshes.
 
 **Floor collision requires Transform3D in MeshLibrary shapes.** The `shapes` array in
 `MazeTiles.tres` is a flat `[shape, transform, ...]` list. The floor item must include
@@ -75,9 +80,14 @@ the vertical noise streaks fan out into "fur".
 
 ## Architecture (what filenames don't tell you)
 
-- **MazeData.cs** is the central authority for world layout. The maze is 10000×10000 cells,
-  stateless and deterministic — `IsFloor(wx, wz)` computes cell type in O(1) via a murmur3
-  variant hash. There is no stored world array.
+- **MazeData.cs** is the central authority for world layout, backed by the **maze-gen region
+  façade** (`PlayersWorlds.Maps`). At startup it generates one real region (footprint
+  `RegionFootprintSide` = 15 cells; `RegionRecipe.Maze` + Aldous-Broder; square 1×1 cells) with
+  a `NullRegionStore` (regenerated each run, no persistence). `IsFloor(wx, wz)` answers O(1)
+  from the resident `RegionView` (`region.CellAt(cell).IsPassable`); outside the region = wall.
+  Maze size is the region footprint (15×15), not a fixed 10000×10000 bound, and no longer a
+  murmur3 hash. `WorldOffset` is computed at runtime from the region size
+  (`−RegionSize × CellWorldSize / 2` ≈ −27), so it is 0 until `_Ready` builds the region.
 - **Chunk streaming:** only 9 chunks (3×3, `LoadDistance=1`) are loaded. Load iterates a
   full `[-1,1]×[-1,1]` square and unload uses per-axis `Abs > LoadDistance` (Chebyshev, not
   Manhattan). Each chunk is 16×16 cells = 57.6×57.6 world units. `ChunkManager.UpdateChunks()`
@@ -86,7 +96,7 @@ the vertical noise streaks fan out into "fur".
 - **Item system** hubs in `InventoryHud.cs` (`HUD/Inventory`) — it owns the item state machine (InWorld / InInventory / Activated). `Inventory`/`Item` = 12-slot model; `Item.Usage` is ImmediateA (`Use()`) or ActivatedB (into hand). Slot icons render `Item.BuildModel()` (glb, or a procedural polaroid for `PhotoItem`) into a `SubViewport`; same factory builds the in-world model (scale = `WorldItemSizeFraction` 0.25 × player height). Drop (`DropProjectile`) flings a "star" that lands as a `WorldItem` (static `WorldItem.All` registry). Pickup is **automatic** (no key): scan registry for nearest armed item in range with line-of-sight; `PickupProjectile` flies it back. `ItemStar` is the shared star visual.
   - **Activation / reservation** (F-18/B, F-19a): a pattern-B item stays in its slot but is flagged `_activatedItem`/`_reservedSlot`, blocking the slot; `ActivateSlot`/`Deactivate`/`DropActivated`/`ConsumeActivated` transition it. Activation plays `Player.PlayPickupGesture()` (the `Interact` clip). **Vintage camera** (REQ-0013): **LMB** (`use_activated`) opens `ViewfinderHud` — a framed **window above the player's head** (third-person view kept, no darken) showing a `SubViewport` first-person level/yaw lens view, sepia + vignette + 3→2→1 timer (`TickSeconds` 0.6667, 3× faster), forward focus ray min 1.8; on fire a `PhotoItem` is created into the reserved slot and the camera destroyed. On fire it also plays `PlayPickupGesture()` + a slot flash so the new photo is noticed. **Photo** (REQ-0017): activating it opens a **live, monochrome-sepia window centred on screen with a simple drawn frame** (`PhotoEnterHud` — one `SubViewport` `_vp` renders the captured pos/yaw with `Environment` saturation 0; a warm sepia overlay + procedural wood/brass border are drawn in `_Draw`; passing monsters show live; a 3D `polaroid_photo.glb` frame variant was tried, dropped, and the model removed); **holding W** while advancing grows the window from centre and teleports at `EnterDuration` 1.3333 s (1.5× shorter) (`UpdatePhotoEnter` → `Player.TeleportTo`, main pitch preserved) + sepia flash.
   - Requirements: `REQ-0011-inventory/`, `REQ-0012-base-item/` (+ sub-features `REQ-001{4,5,6}-...`), `REQ-0013-vintage-camera/`, `REQ-0017-photo/`. Not implemented: `Item` as `.tres` type registry, serialization, edge-screen activated indicator, photo thumbnail icon.
-- **Monster system** (`REQ-0019`/`REQ-0020`): `Monster` (`src/Monster.cs`, abstract `CharacterBody3D`) is the template; `Ifrit` (`src/Ifrit.cs`) the first concrete type (fiery humanoid ifrit, contact). Static `Monster.All` registry (persistent under `Main`, not chunk-bound). Perception = vision cone + LoS ray (`CanSee`); FSM in `_PhysicsProcess` — `Cycle` (patrol) / `Threat` (chase) / `Stun` / `Distract`, priority Stun > player-visibility > distraction, no memory after disruption. Movement = **BFS over `MazeData.IsFloor` cells** (patrol restricted to a segment ≈ 1 chunk); model faces movement via `LookAt` + `ModelYawOffsetDeg` (180° — ifrit forward is +Z like the player rig). Animation (`UpdateAnim`/`PlayAttack`) plays the glb's `AnimationPlayer` clips: `IdleAnim`/`MoveAnim` (looped via `SetLoop`, speed-scaled) + `AttackAnim`/`StunAnim` (one-shot); the ifrit ships a full set — `Idle`/`Run`/`Attack`/`BeHit` (`Monster_YiFuLiTe_*`). Contact damage emits `PlayerHit` signal + `DamageHud` red flash (no health system yet). Model scaled by **height** (`TargetHeight`; `ScaleByLength` for low/long models), local-space AABB (float32 at world −18000). `MonsterSpawner` (`Main/MonsterSpawner`) is a **minimal debug spawner** near start (real spawner is future). Hooks/TODO: `Stun()` has no trigger (future ball IDEA-0025), distraction reacts to any `WorldItem`, Ranged/Small/health/death-state are future.
+- **Monster system** (`REQ-0019`/`REQ-0020`): `Monster` (`src/Monster.cs`, abstract `CharacterBody3D`) is the template; `Ifrit` (`src/Ifrit.cs`) the first concrete type (fiery humanoid ifrit, contact). Static `Monster.All` registry (persistent under `Main`, not chunk-bound). Perception = vision cone + LoS ray (`CanSee`); FSM in `_PhysicsProcess` — `Cycle` (patrol) / `Threat` (chase) / `Stun` / `Distract`, priority Stun > player-visibility > distraction, no memory after disruption. Movement = **BFS over `MazeData.IsFloor` cells** (patrol restricted to a segment ≈ 1 chunk); model faces movement via `LookAt` + `ModelYawOffsetDeg` (180° — ifrit forward is +Z like the player rig). Animation (`UpdateAnim`/`PlayAttack`) plays the glb's `AnimationPlayer` clips: `IdleAnim`/`MoveAnim` (looped via `SetLoop`, speed-scaled) + `AttackAnim`/`StunAnim` (one-shot); the ifrit ships a full set — `Idle`/`Run`/`Attack`/`BeHit` (`Monster_YiFuLiTe_*`). Contact damage emits `PlayerHit` signal + `DamageHud` red flash (no health system yet). Model scaled by **height** (`TargetHeight`; `ScaleByLength` for low/long models), local-space AABB (local transform chains, not global coords — was needed against float32 loss at world −18000, still sound near the origin). **NB:** if `BuildBody` can't load `ModelPath` (e.g. `.godot/imported/*.scn` missing because assets weren't re-imported) it falls back to an *empty* `Node3D` — the monster then has collision + contact damage but no visible mesh; run `--import` to fix. `MonsterSpawner` (`Main/MonsterSpawner`) is a **minimal debug spawner** near start (real spawner is future). Hooks/TODO: `Stun()` has no trigger (future ball IDEA-0025), distraction reacts to any `WorldItem`, Ranged/Small/health/death-state are future.
 - **Mob.cs** / **mob.tscn** — old charge stub, superseded by `Monster`/`Ifrit`, never spawned.
 - **game_object.cs** is an empty unused placeholder. Ignore it.
 
