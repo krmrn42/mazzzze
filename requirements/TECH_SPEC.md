@@ -15,7 +15,7 @@
 | Renderer | Forward Plus | (built-in) |
 | Platform | Windows (D3D12) | - |
 
-**Project file:** `maze-prototype-1.csproj` — Godot SDK 4.6.3, nullable enabled.
+**Project file:** `maze-prototype-1.csproj` — `Godot.NET.Sdk/4.7.0` (Godot 4.7 mono), `net8.0`, nullable enabled.
 
 ## 2. Build and Run
 
@@ -142,46 +142,50 @@ Main (Node3D)                              - main.tscn, root
 
 | Constant | Value | Meaning |
 |----------|-------|---------|
-| WorldWidth | 10000 | Maze cells in X dimension |
-| WorldHeight | 10000 | Maze cells in Z dimension |
+| RegionFootprintSide | 15 | Region footprint per side, in world (Block) cells — the maze size |
+| RandomizeEachLaunch | true | Fresh maze each run (seed from `Time.GetTicksUsec()`); false → use `FixedSeed` |
+| FixedSeed | 12345 | Reproducible seed when `RandomizeEachLaunch = false` |
 | CellWorldSize | 3.6f | World units per maze cell = corridor width = 6 x player diameter (0.6) |
 | WallHeight | 30.0f | Wall height in world units (towering canyon walls) |
 
-**Computed Properties:**
+**Computed Properties (runtime, from the generated region):**
 
-| Property | Formula | Value |
+| Property | Formula | Value (15×15 footprint) |
 |----------|---------|-------|
-| WorldOffsetX | -WorldWidth * CellWorldSize / 2 | -18000 |
-| WorldOffsetZ | -WorldHeight * CellWorldSize / 2 | -18000 |
-| PlayerStartCell | Vector2I(1, 1) | Entry cell (maze coordinates) |
+| RegionSize | region `Size` (Vector2I); `Zero` before `_Ready` | (15, 15) |
+| WorldOffsetX | -RegionSize.X * CellWorldSize / 2 | ≈ -27 |
+| WorldOffsetZ | -RegionSize.Y * CellWorldSize / 2 | ≈ -27 |
+| PlayerStartCell | region **Entrance** POI cell (varies per seed) | e.g. (9, 3) |
 
-The world is centred at origin: cells [0, 9999] map to world X/Z approx [-18000, +17996].
+`WorldOffset` is no longer a fixed `-18000` constant — it is derived from the region size and
+returns 0 until `_Ready()` builds the region (nothing may read it earlier). The region is
+centred at the world origin: a 15×15 footprint maps to world X/Z ≈ [-27, +27].
 
-**Procedural Maze Algorithm - IsFloor(wx, wz):**
+**Map source — maze-gen region façade (replaces the old hash):**
 
-Deterministic, stateless, O(1) per cell. No global array stored.
+`MazeData` no longer computes cells from a murmur3 hash. In `_Ready()` it builds **one real
+region** via the maze-gen library (`PlayersWorlds.Maps`):
 
-Cell classification rules (evaluated in order):
-
-1. Border cells (wx<=0 or wz<=0 or wx>=9999 or wz>=9999) -> wall
-2. Entrance: cell (1, 0) -> floor (top entrance)
-3. Exit: cell (9998, 9999) -> floor (bottom exit)
-4. Odd-Odd cells ((wx&1)==1 and (wz&1)==1) -> floor (corridor hubs, ensures global connectivity)
-5. Even-Odd cells (vertical walls between adjacent corridors): murmur3-finalizer hash -> floor if hash%100 < 70 (70% open)
-6. Odd-Even cells (horizontal walls): same hash -> floor if hash%100 < 70
-7. Even-Even cells (pillars): floor if hash%100 < 5 (5% open)
-
-**Hash function** (murmur3 finalizer variant):
 ```
-h = wx * 0x45d9f3b + wz * 0x119de1f3
-h = (h ^ (h >> 16)) * 0x85ebca6b
-h = (h ^ (h >> 13)) * 0xc2b2ae35
-h = h ^ (h >> 16)
+new World(new NullRegionStore(), seed,
+          new Vector(RegionFootprintSide, RegionFootprintSide),
+          RegionRecipe.Maze
+              .WithAlgorithm(RegionAlgorithm.AldousBroder)
+              .WithRooms(2, new Vector(3, 3), new Vector(5, 5), RoomKind.Hall)
+              .WithCells(1))                          // square 1×1 cells (client-owned shape)
+    .GetOrCreate(new RegionAddress(new Vector(0, 0)))  // -> resident RegionView
 ```
+
+- `NullRegionStore` = regenerate every launch, no persistence yet.
+- Entrance/exit come from the region's **POIs** (`PoiKind.Entrance` / `PoiKind.Exit`, the
+  longest-path ends); `PlayerStartCell = entrance`.
+- **IsFloor(wx, wz):** O(1), answered by the region —
+  `region.Contains(cell) && region.CellAt(cell).IsPassable`. Outside the region reads as wall.
+  No global array is stored (the region is the resident data).
 
 **Chunk Data API - GetChunkData(chunkX, chunkZ, chunkSize):**
 
-Returns `int[chunkSize, chunkSize]` where 0=floor, 1=wall. Iterates over the chunk's cell range and calls IsFloor() for each. Out-of-bounds chunks return all-1 (wall).
+Returns `int[chunkSize, chunkSize]` where 0=floor, 1=wall. Iterates over the chunk's cell range and calls IsFloor() for each. Cells outside the region return 1 (wall).
 
 ### 5.2 ChunkManager - Dynamic Chunk Streaming
 
@@ -294,7 +298,7 @@ Wall material detail (`StandardMaterial3D_wall` in `MazeTiles.tres`):
 
 The Y=+15 offset (= WallHeight/2) is critical: without it, the wall BoxMesh would be centred at Y=0 (half below floor). With the offset, wall occupies Y=0 to Y=30, on top of floor tile (Y=-0.1 to Y=0.1). Walls tower far above the camera, blocking any over-the-top view of the maze.
 
-**Tile overlap (seam fix).** The floor and wall **meshes** are 3.66 wide while the GridMap `cell_size` is 3.6, so neighbouring tiles overlap by ~0.03 per side instead of abutting exactly. Reason: the maze renders at large world coordinates (`WorldOffset = -WorldWidth*CellWorldSize/2 = -18000`; the player starts near world (-17994, -17994)), where float32 precision is only ~0.002. Exactly-coincident tile edges there leave hairline cracks that show the dark background through the floor/walls. The small overlap covers the cracks. Because both materials use **world-space triplanar** mapping, the overlapping region samples the *same* texel on both tiles, so the resulting coplanar z-fight is invisible — no flicker, no double-lighting. The **collision** shapes stay at the true 3.6 cell size so gameplay/clearance is unchanged (the 0.03 visual lip has no collider behind it, which is negligible against the 0.3 player radius). A deeper fix for the precision loss would be a floating-origin / re-centred world, but that is a larger change than the seam bug required.
+**Tile overlap (seam fix).** The floor and wall **meshes** are 3.66 wide while the GridMap `cell_size` is 3.6, so neighbouring tiles overlap by ~0.03 per side instead of abutting exactly. **Historical reason:** the maze used to render at large world coordinates (`WorldOffset = -18000`; the player started near world (-17994, -17994)), where float32 precision is only ~0.002 — exactly-coincident tile edges there left hairline cracks showing the dark background through the floor/walls, and the small overlap covered them. **Since the region-façade refactor** the maze is centred near the origin (`WorldOffset ≈ -27`; footprint 15×15), where float32 precision is ample, so those cracks no longer occur and the overlap is now **defensive/harmless** rather than load-bearing. Because both materials use **world-space triplanar** mapping, the overlapping region samples the *same* texel on both tiles, so the coplanar z-fight is invisible — no flicker, no double-lighting. The **collision** shapes stay at the true 3.6 cell size so gameplay/clearance is unchanged (the 0.03 visual lip has no collider behind it, negligible against the 0.3 player radius). The move near the origin is effectively the "re-centred world" that a deeper precision fix would have required.
 
 ### 5.5 Player - Character Controller
 
@@ -366,15 +370,16 @@ Camera height: walls are 30 tall. At default (zoom 10, pitch -60 deg) the un-cli
 7. Chunk update: ChunkManager.UpdateChunks(new Vector2(GlobalPosition.X, GlobalPosition.Z))
 8. Camera spring: UpdateCameraCollision(dt) raycasts pivot->camera and shortens the camera distance if a wall is in the way (see Camera System above)
 
-**Start Position:**
+**Start Position:** (`PlayerStartCell` = the region's entrance POI, so the exact cell varies per seed)
 ```
 Position = (PlayerStartCell.X * CellWorldSize + WorldOffsetX + CellWorldSize/2,
             0.3,   // just above the floor (top Y~0.1); settles onto it
             PlayerStartCell.Y * CellWorldSize + WorldOffsetZ + CellWorldSize/2)
-         = (1*3.6 + (-18000) + 1.8, 0.3, 1*3.6 + (-18000) + 1.8)
-         = (-17994.6, 0.3, -17994.6)
+   e.g. entrance (9, 3), WorldOffset ≈ -27:
+         = (9*3.6 + (-27) + 1.8, 0.3, 3*3.6 + (-27) + 1.8)
+         = (7.2, 0.3, -14.4)
 ```
-The +CellWorldSize/2 centres the player within the cell: with cell_center_x/z=true, GridMap places the cell (and its floor tile) centre at cell_index * cell_size + cell_size/2, so the spawn formula lands exactly on the floor-tile centre of cell (1,1).
+The +CellWorldSize/2 centres the player within the cell: with cell_center_x/z=true, GridMap places the cell (and its floor tile) centre at cell_index * cell_size + cell_size/2, so the spawn formula lands exactly on the floor-tile centre of the entrance cell.
 
 **Input Map (project.godot):**
 
@@ -431,7 +436,7 @@ Ground collision spans Y=[-1.0, 0.0]. Top surface at Y=0. Provides flat floor ac
 - **FSM (F-41)** in `_PhysicsProcess`: `Cycle` (patrol) / `Threat` (chase) / `Stun` / `Distract`. Priority Stun > player-visibility > distraction; no memory after disruption (→ `Cycle`).
 - **Movement:** BFS pathfinding over `MazeData.IsFloor` cells (`FindPath`), following cell centres + direct final-approach; patrol restricted to a segment. Gravity + `MoveAndSlide`.
 - **Contact damage (F-42):** planar touch distance, throttled by `ContactInterval`; emits `PlayerHit(damage)` signal + `DamageHud` red flash + log. No health system yet (monster only reports the hit).
-- **Model:** `BuildBody` instantiates the type's glb, computes a **local-space** AABB (avoids float32 loss at world −18000), scales by **height** (`TargetHeight`; `ScaleByLength` → by horizontal span for low/long models), grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis; `ModelPivot` faces movement via `LookAt` + `ModelYawOffsetDeg` (180° for the ifrit — forward +Z like the player rig).
+- **Model:** `BuildBody` instantiates the type's glb (via `GD.Load<PackedScene>(ModelPath)`; **if the load fails — e.g. `.godot/imported/*.scn` missing because assets weren't re-imported — it falls back to an *empty* `Node3D`**, giving a monster with collision + contact damage but no visible mesh; run `--import` to fix), computes a **local-space** AABB (local transform chains, not global coords — historically avoided float32 loss at world −18000, still sound near the origin), scales by **height** (`TargetHeight`; `ScaleByLength` → by horizontal span for low/long models), grounds it, adds a capsule collider on layer 1 (blocks the player). `ModelUprightPitchDeg` corrects a mis-authored up-axis; `ModelPivot` faces movement via `LookAt` + `ModelYawOffsetDeg` (180° for the ifrit — forward +Z like the player rig).
 - **Animation:** `UpdateAnim`/`PlayAttack` drive the model's `AnimationPlayer` — `IdleAnim` (still) / `MoveAnim` (moving, looped + speed-scaled) / `AttackAnim` (one-shot on contact) / `StunAnim` (one-shot on `Stun()`). Idle/Move loops forced via `SetLoop` (glb clips import one-shot). The ifrit ships a full set: `Idle`, `Run`, `Attack`, `BeHit` (`Monster_YiFuLiTe_*`).
 
 **`Ifrit`** — fiery humanoid demon, contact delivery. Defaults: vision 18 wu / 100°, patrol 2.0 / chase 4.0 wu/s, damage 10, chase-drop 57.6 wu (1 chunk), contact 0.7 s, stun 2.5 s, segment 16 cells, height 2.4, `art/ifrit.glb`.
@@ -567,34 +572,34 @@ yaw, pitch)` (stands on floor at Y=0.3, re-streams chunks), `PhotoEnterHud.Flash
 ## 7. Coordinate Systems
 
 **Maze Cell Coordinates:**
-- Origin: (0, 0) at top-left corner of the maze
+- Origin: (0, 0) at top-left corner of the region
 - X-axis: east (increasing column index)
 - Z-axis: south (increasing row index)
-- Range: [0, 9999] in both axes
-- Cell (1, 0) = entrance; Cell (9998, 9999) = exit
+- Range: [0, RegionSize-1] in both axes (currently [0, 14] for the 15×15 footprint)
+- Entrance / exit = the region's `Entrance` / `Exit` POIs (vary per seed)
 
 **World Coordinates:**
-- Origin: centre of the maze
+- Origin: centre of the region
 - X-axis: east; Y-axis: up; Z-axis: south (Godot convention: -Z = forward)
 - Maze cells map to world via:
   - worldX = cellX * CellWorldSize + WorldOffsetX + CellWorldSize/2
   - worldZ = cellZ * CellWorldSize + WorldOffsetZ + CellWorldSize/2
-  - where WorldOffsetX = WorldOffsetZ = -18000, CellWorldSize = 3.6
-- Maze extends from world X/Z approx [-18000, +17996]
+  - where WorldOffsetX = WorldOffsetZ ≈ -27 (= -RegionSize * CellWorldSize / 2), CellWorldSize = 3.6
+- Maze extends from world X/Z ≈ [-27, +27] (15×15 footprint)
 - Floor surface Y = 0; walls occupy Y = [0, 30]
 
 **Chunk Coordinates:**
-- Chunk (0, 0) covers cells [0, 15]; Chunk (624, 624) covers cells [9984, 9999]
-- Total: 625x625 = 390,625 possible chunks
-- At any moment, 9 chunks are active (LoadDistance=1 -> 3x3 grid around player)
+- Chunk (0, 0) covers cells [0, 15]; a 15×15 region fits within a single chunk's span
+- The chunk grid is unbounded in principle; only cells inside the region are floor
+- At any moment, up to 9 chunks are active (LoadDistance=1 -> 3x3 grid around player)
 
 ## 8. Key Design Decisions
 
-1. **Procedural, stateless maze** - 10000x10000 = 100M cells cannot fit in memory (400MB for ints). Hash-based IsFloor() generates any cell in O(1) without storage.
+1. **Maze-gen region façade** - the map is one generated region (`PlayersWorlds.Maps`, Aldous-Broder) resident in memory, not a coordinate hash. It replaced the old stateless murmur3 `IsFloor()` (which needed a huge 10000×10000 finite bound to feel infinite); a real, small region gives a proper connected maze with genuine entrance/exit POIs and rooms. Centring it near the origin also eliminated the float32-precision seam problem of the old -18000 coordinates.
 
-2. **Odd-odd cells = guaranteed corridors** - ensures the entire maze is connected. Without this, the hash could create isolated rooms.
+2. **Client-owned cell shape** - the recipe pins **square 1×1 cells** (`.WithCells(1)`), so the generator's abstract cells render as square tiles; the game (not the library) decides world scale via `CellWorldSize`.
 
-3. **70% wall removal** between adjacent corridors - balances openness (maze is navigable) with structure (dead ends and turns exist).
+3. **Regenerate each launch** - `NullRegionStore` + `RandomizeEachLaunch` give a fresh maze every run (no persistence yet); set `RandomizeEachLaunch = false` with `FixedSeed` for a reproducible layout.
 
 4. **CellWorldSize = 3.6** - corridors are 3.6 world-units wide = 6x the player diameter (0.6), giving a wide, comfortable canyon-like passage with ~42% clearance on each side. Wall thickness equals corridor width (one cell).
 
