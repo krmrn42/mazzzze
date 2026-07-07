@@ -21,3 +21,4 @@ mono_crash.*.json
 
 # Reference/tutorial assets, not part of this project
 3d_squash_the_creeps_starter/
+.bin/

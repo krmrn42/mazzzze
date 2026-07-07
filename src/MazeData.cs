@@ -15,10 +15,12 @@ public partial class MazeData : Node
 
 	// Region footprint per side, in world (Block) cells. This is exactly the
 	// size the façade returns (see RegionSize); the corridor count within it is
-	// derived from the recipe. 65 = a 32-cell maze rendered at square 1×1.
-	private const int RegionFootprintSide = 65;
-	// Fixed world seed so the single region is stable across runs; tune freely.
-	private const int WorldSeed = 12345;
+	// derived from the recipe. 25 = a 12-cell maze rendered at square 1×1.
+	private const int RegionFootprintSide = 15;
+	// The world seed decides the maze. Set RandomizeEachLaunch = false and use
+	// FixedSeed for a reproducible maze; true gives a fresh maze every start.
+	private const bool RandomizeEachLaunch = true;
+	private const int FixedSeed = 12345;
 
 	// Ширина коридора = 6 × диаметр игрока (коллизия: сфера r=0.3 → Ø0.6) = 3.6
 	public const float CellWorldSize = 3.6f;  // размер клетки в мировых единицах
@@ -50,12 +52,16 @@ public partial class MazeData : Node
 	public override void _Ready()
 	{
 		// The world is created once with our footprint and default recipe.
-		// Recipe is OUR (client) setting: a Maze with square 1×1 cells, so
-		// tiles are square in world space.
+		// Recipe is OUR (client) setting: a Hunt-and-Kill maze with square 1×1
+		// cells, so tiles are square in world space.
+		var seed = RandomizeEachLaunch ? (int)Time.GetTicksUsec() : FixedSeed;
 		var world = new World(
-			new NullRegionStore(), WorldSeed,
+			new NullRegionStore(), seed,
 			new MgVector(RegionFootprintSide, RegionFootprintSide),
-			RegionRecipe.Maze.WithCells(1));
+			RegionRecipe.Maze
+				.WithAlgorithm(RegionAlgorithm.AldousBroder)
+				.WithRooms(2, new MgVector(3, 3), new MgVector(5, 5), RoomKind.Hall)
+				.WithCells(1));
 		_region = world.GetOrCreate(new RegionAddress(new MgVector(0, 0)));
 
 		var entrance = FindPoi(PoiKind.Entrance);
@@ -65,7 +71,7 @@ public partial class MazeData : Node
 		PlayerStartCell = _entrance;
 
 		GD.Print($"[MazeData] region {RegionSize.X}x{RegionSize.Y} block cells, " +
-			$"seed={WorldSeed}, entrance={_entrance}, exit={_exit}, " +
+			$"seed={seed}, entrance={_entrance}, exit={_exit}, " +
 			$"offset=({WorldOffsetX:F0}, {WorldOffsetZ:F0})");
 	}
 
