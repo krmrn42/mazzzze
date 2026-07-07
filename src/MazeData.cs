@@ -48,9 +48,13 @@ public partial class MazeData : Node
 
 	public override void _Ready()
 	{
+		// Cell shape is OUR (client) setting: square 1×1 Block cells so tiles
+		// are square in world space. The 2×1 ratio the library uses for ASCII
+		// debug rendering is not wanted here.
 		var world = new World(
 			new NullRegionStore(), WorldSeed,
-			new MgVector(RegionMazeSide, RegionMazeSide));
+			new MgVector(RegionMazeSide, RegionMazeSide),
+			cellSize: new MgVector(1, 1), wallSize: new MgVector(1, 1));
 		_region = world.GetOrCreate(new RegionAddress(new MgVector(0, 0)));
 
 		var entrance = FindPoi(PoiKind.Entrance);
