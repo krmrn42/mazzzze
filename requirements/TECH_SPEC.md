@@ -15,7 +15,7 @@
 | Renderer | Forward Plus | (built-in) |
 | Platform | Windows (D3D12) | - |
 
-**Project file:** `maze-prototype-1.csproj` — `Godot.NET.Sdk/4.7.0` (Godot 4.7 mono), `net8.0`, nullable enabled.
+**Project file:** `maze-prototype-1.csproj` — Godot SDK 4.6.3, nullable enabled.
 
 ## 2. Build and Run
 
