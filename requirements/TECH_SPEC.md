@@ -157,6 +157,18 @@ Main (Node3D)                              - main.tscn, root
 | WorldOffsetZ | -RegionSize.Y * CellWorldSize / 2 | ≈ -27 |
 | PlayerStartCell | region **Entrance** POI cell (varies per seed) | e.g. (9, 3) |
 
+**Environment kit selection (`REQ-0022`, US-22 / F-51):**
+
+| Member | Type | Meaning |
+|--------|------|---------|
+| `RegionEnvironment` | `[Export] EnvironmentId` | Which wall-rendering environment kit the region's walls use — `SlotCanyon` (default) or `Ravine`. One value for the whole region; flip in the editor to A/B the two kits. |
+| `WorldSeed` | `int` (public get, private set) | The region's generation seed, captured in `_Ready`. Consumed by `Chunk.CellSeed` so wall-rock placement is deterministic per world cell (see 5.3). |
+
+`ChunkManager.LoadChunk` reads `MazeData.Instance.RegionEnvironment` and resolves the corresponding
+kit via `EnvironmentKitRegistry.Get(...)` once per chunk load, passing it into `Chunk.Setup`. See
+[`requirements/REQ-0022-environment-kits/design.md`](./REQ-0022-environment-kits/design.md) for the
+full `EnvironmentKit`/`SlotCanyonKit`/`RavineKit`/`EnvironmentKitRegistry` design.
+
 `WorldOffset` is no longer a fixed `-18000` constant — it is derived from the region size and
 returns 0 until `_Ready()` builds the region (nothing may read it earlier). The region is
 centred at the world origin: a 15×15 footprint maps to world X/Z ≈ [-27, +27].
@@ -254,7 +266,8 @@ origin sits at world Y=0; the Floor tile then rests on the Y=0 plane and walls r
 mesh (30 tall, offset +15), NOT by `cell_size.y`. Setting `cell_size.y` to the wall height while
 `cell_center_y` is true would push the floor up by half the wall height and drop the player below it.
 
-**Setup(Vector2 coord, int[,] chunkData):**
+**Setup(Vector2 coord, int[,] chunkData, EnvironmentKit kit)** (`kit` param added by `REQ-0022`,
+US-22/F-51..F-53 — see [`REQ-0022-environment-kits/design.md`](./REQ-0022-environment-kits/design.md)):
 
 1. Store chunkCoord
 2. gridmap.Clear() - remove previous tiles
@@ -262,8 +275,21 @@ mesh (30 tall, offset +15), NOT by `cell_size.y`. Setting `cell_size.y` to the w
    - cellType = chunkData[x, z]
    - tileId = 0 if floor, 1 if wall, -1 if unknown
    - gridmap.SetCellItem(new Vector3I(x, 0, z), tileId)
+   - if cellType == 1 (wall): compute `seed = CellSeed(MazeData.Instance.WorldSeed, wx, wz)`
+     (world cell coords, FNV-1a) and the cell's local center; call `kit.PlaceRocks(center, seed)`
+     and bucket each returned `RockPlacement` by prototype index
+4. After the cell loop: for each non-empty prototype bucket, build one `MultiMeshInstance3D`
+   (`Mesh = kit.Prototypes[i]`, `MaterialOverride = kit.RockMaterial`, one instance transform per
+   bucketed placement) and add it as a child of the chunk
 
 GridMap places each tile centred at the cell's world position. cell_size=(3.6,1,3.6) means adjacent cells are 3.6 world-units apart in XZ. With cell_center_y=false the floor sits on the Y=0 plane.
+
+**Wall rock rendering (`REQ-0022`):** the GridMap wall item (id 1, below) supplies collision and
+opacity only; the *visible* rock surface on top of it is built per-chunk from
+`EnvironmentKitRegistry.Get(MazeData.Instance.RegionEnvironment)`, batched into at most
+`kit.Prototypes.Length` `MultiMeshInstance3D`s per chunk (≤ 8 draw calls/chunk today). Placement is
+deterministic per world cell (`CellSeed`), so rocks do not change or flicker as chunks stream in
+and out. Full design: [`REQ-0022-environment-kits/design.md`](./REQ-0022-environment-kits/design.md).
 
 ### 5.4 MeshLibrary - Maze Tiles
 
@@ -281,20 +307,35 @@ GridMap places each tile centred at the cell's world position. cell_size=(3.6,1,
 | mesh_transform | Identity (Y=0, centred on floor) |
 | Shadow casting | On |
 
-**Item 1 - Wall:** dark, vertically-fluted canyon rock (matches the reference look in `walls.png`).
+**Item 1 - Wall:** dark occluder + collision box (`REQ-0022`, US-22/F-52 — see below). Prior to
+`REQ-0022` this item's own `BoxMesh` carried a fluted-noise material and *was* the visible wall
+surface; since `REQ-0022` the visible rock surface is a set of kit-driven `MultiMeshInstance3D`s
+built by `Chunk.Setup` on top of this box (see 5.3), and this item's material was restyled to a
+plain dark occluder so it no longer needs to look like rock itself — it only has to stay opaque
+behind whatever gaps exist between the instanced rocks.
 
 | Property | Value |
 |----------|-------|
 | Mesh | BoxMesh(**3.66**, 30, **3.66**) - tall pillar, slightly larger than the 3.6 cell (see "Tile overlap" below) |
-| Material | StandardMaterial3D, see below |
+| Material | StandardMaterial3D, flat dark occluder: `albedo_color = Color(0.05, 0.045, 0.04, 1)`, `roughness = 1.0`, `metallic_specular = 0.0`, no normal map |
 | Collision | BoxShape3D(3.6, 30, 3.6) - matches the **cell** size, not the mesh - with Transform3D Y=+15 |
 | mesh_transform | Transform3D Y=+15 - wall SITS ON the floor (Y=0 to 30) |
 | Shadow casting | On |
 
-Wall material detail (`StandardMaterial3D_wall` in `MazeTiles.tres`):
-- **Noise:** one `FastNoiseLite` (Cellular-ish, frequency 0.05, 6 fractal octaves) with **domain warp enabled** (type 1, amplitude 12, frequency 0.02) so the rock reads as organic channelled stone rather than even speckle. Baked into two 512² seamless `NoiseTexture2D`s — an albedo one through a 4-stop `Gradient` (near-black valleys `Color(0.035,0.03,0.026)` → dusty brown ridges `Color(0.34,0.3,0.25)`) and a normal map (`as_normal_map`, bump_strength 4.5).
-- **Mapping:** world-space triplanar (`uv1_world_triplanar`) with an anisotropic `uv1_scale = Vector3(0.14, 0.06, 0.14)` — chunky horizontally, ~2.3× stretched vertically. This turns the isotropic noise into the tall **vertical fluting** seen in the reference. (Stretching further — uv1_scale.y below ~0.05 — fans the streaks into "fur"; 0.06 is the stable maximum. World-space mapping also makes adjacent tiles blend into one continuous wall with no per-tile seams.)
-- roughness 0.92, metallic_specular 0.18, normal_scale 1.8.
+**Pre-`REQ-0022` wall material (superseded, sub-resources still present but unreferenced in
+`MazeTiles.tres`):** one `FastNoiseLite` (Cellular-ish, frequency 0.05, 6 fractal octaves) with
+domain warp enabled (type 1, amplitude 12, frequency 0.02), baked into an albedo `NoiseTexture2D`
+through a 4-stop `Gradient` and a normal-map `NoiseTexture2D`, mapped world-space triplanar with
+anisotropic `uv1_scale = Vector3(0.14, 0.06, 0.14)` for vertical fluting. Kept only as orphaned
+sub-resources in the `.tres` file (harmless); no longer assigned to item 1.
+
+**Visible wall rock surface (`REQ-0022`, US-22/F-51..F-53):** built by `Chunk.Setup` per wall cell
+via the region's `EnvironmentKit` (`EnvironmentKitRegistry.Get(MazeData.Instance.RegionEnvironment)`),
+batched into per-prototype `MultiMeshInstance3D`s (see 5.3). Two kits exist —
+`SlotCanyonKit` (8 `Cliff*` meshes, `Cliff_Material_Red_Sand.tres`, tight/tall/near-vertical) and
+`RavineKit` (same 8 meshes, `Cliff_Material_Photoscan.tres`, tilted/wider-spread) — sourced from
+`art/RockPack1/` (Arnklit Cliffs & Rocks v1_02). Full design, parameters, and scope limits:
+[`requirements/REQ-0022-environment-kits/design.md`](./REQ-0022-environment-kits/design.md).
 
 The Y=+15 offset (= WallHeight/2) is critical: without it, the wall BoxMesh would be centred at Y=0 (half below floor). With the offset, wall occupies Y=0 to Y=30, on top of floor tile (Y=-0.1 to Y=0.1). Walls tower far above the camera, blocking any over-the-top view of the maze.
 

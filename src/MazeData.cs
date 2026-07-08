@@ -33,6 +33,11 @@ public partial class MazeData : Node
 
 	public Vector2I PlayerStartCell { get; private set; }
 
+	[Export]
+	public EnvironmentId RegionEnvironment = EnvironmentId.SlotCanyon;
+
+	public int WorldSeed { get; private set; }
+
 	// The rendered region size in Block cells (replaces the old fixed
 	// 10000×10000 world bounds).
 	public Vector2I RegionSize =>
@@ -55,6 +60,7 @@ public partial class MazeData : Node
 		// Recipe is OUR (client) setting: a Hunt-and-Kill maze with square 1×1
 		// cells, so tiles are square in world space.
 		var seed = RandomizeEachLaunch ? (int)Time.GetTicksUsec() : FixedSeed;
+		WorldSeed = seed;
 		var world = new World(
 			new NullRegionStore(), seed,
 			new MgVector(RegionFootprintSide, RegionFootprintSide),
@@ -71,7 +77,7 @@ public partial class MazeData : Node
 		PlayerStartCell = _entrance;
 
 		GD.Print($"[MazeData] region {RegionSize.X}x{RegionSize.Y} block cells, " +
-			$"seed={seed}, entrance={_entrance}, exit={_exit}, " +
+			$"seed={seed}, environment={RegionEnvironment}, entrance={_entrance}, exit={_exit}, " +
 			$"offset=({WorldOffsetX:F0}, {WorldOffsetZ:F0})");
 	}
 
