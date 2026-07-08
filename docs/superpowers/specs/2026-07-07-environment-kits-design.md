@@ -27,8 +27,10 @@ endless world — not a one-off canyon hack.
   concrete kits: **SlotCanyon** and **Ravine**.
 - Single region (as today). Environment chosen game-side at region creation,
   exposed as an `[Export]` for easy A/B testing.
-- Rock meshes sourced from an existing free rock pack (e.g. Arnklit's Godot rock
-  pack) for the prototype.
+- Rock meshes sourced from Arnklit's **Godot Cliffs & Rocks Pack 1**, version
+  **`v1_02` (non-HighRes)** — latest and lighter than the `_HighRes` variants.
+  The pack ships 8 cliffs, 6 boulders, 4 rocks, 2 piles, plus rock materials and a
+  triplanar `advanced_rock.gdshader` we reuse.
 
 **Out of scope (границы)**
 - Multi-region streaming / endless world / biome-selection strategy — **seam left,
@@ -121,12 +123,18 @@ classDiagram
   vertical-jitter / protrusion. That is the *only* place SlotCanyon and Ravine
   differ.
 - **Prototypes are loaded once** into the registry singletons, not per chunk.
-- **Two kits, shared meshes, different params (initially):**
-  - **SlotCanyon** — few tall, near-vertical column prototypes; tight; high
-    vertical coverage; low horizontal jitter → fluted slot-canyon look.
-  - **Ravine** — chunkier prototypes; more tilt; wider horizontal spread; varied
-    heights → broken open-ravine look.
-  Two visibly different biomes for near-zero art cost — the difference is tuning.
+- **Two kits, concrete prototypes from the pack:**
+  - **SlotCanyon** — the 8 `Cliff*` meshes (tall, near-vertical) as the primary
+    prototypes, optionally `Rock1–4` at the base; tight; high vertical coverage;
+    low horizontal jitter → fluted slot-canyon look.
+  - **Ravine** — `Boulder1–6` + `Rock1–4` (chunky, rounded); more tilt; wider
+    horizontal spread; varied heights → broken open-ravine look.
+  Two visibly different biomes for near-zero art cost — the difference is the
+  prototype subset + tuning, over the same shared pack.
+- **Feed MultiMesh the bare `Mesh`, not the prefab.** Use the pack's
+  `Models/meshes/Cliff_models_*_mesh.res` mesh resources — a MultiMesh draws N
+  transforms of a single `Mesh`, so the `Prefabs/*.tscn` node/collision wrapping is
+  exactly what the visual-only rocks must not carry.
 
 ## 6. Data flow (region → kit → chunk)
 
@@ -165,9 +173,10 @@ flowchart TD
   gaps between rocks.
 - **Rocks are visual-only** (MultiMesh has no collision); they overhang into the
   corridor freely because collision is the box and the corridor is 6× player width.
-- **Rock material:** shared triplanar rock material for now (reusing the existing
-  wall material is acceptable). Per-kit material override is a future seam, not
-  built.
+- **Rock material:** reuse the pack's `Cliff_Material_*.tres` +
+  `advanced_rock.gdshader` (already triplanar with anti-tiling) applied to the
+  MultiMeshes — no custom material authored. Per-kit material choice (e.g. Grey vs
+  Red rock per biome) is a cheap future seam.
 - **Coordinates:** rock transforms are in **chunk-local** space; the seed uses
   **world** cell coords.
 
@@ -196,7 +205,10 @@ streaming lands, `MazeData` swaps its single `RegionEnvironment` export for a
 ## 10. Risks
 
 - **Perf vs. density** — empirical; validate with a prototype. MultiMesh batching is
-  the primary mitigation.
+  the primary mitigation. The pack's `Cliff*` meshes are **high-poly**
+  (photoscan-grade, ~130–210 KB each), so keep **few cliff instances per wall cell**
+  and standardize on the **non-HighRes** pack; consider decimated LOD meshes if the
+  tri budget bites.
 - **Coverage gaps at 30 height** — rely on the dark occluder box for opacity; ensure
   prototype heights/density actually cover a 30-tall wall (tall column prototypes).
 - **Repetition with few meshes** — killed by rotation + non-uniform scale + vertical
