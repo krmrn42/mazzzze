@@ -101,6 +101,7 @@ Main (Node3D)
 - **Chunk streaming**: `ChunkManager` keeps a 3×3 (LoadDistance=1) grid of 16×16-cell chunks loaded. `UpdateChunks()` is called every `Player._PhysicsProcess`.
 - **MazeTiles.tres**: `MeshLibrary` with exactly 2 items — id 0 = Floor, id 1 = Wall.
 - **Tile overlap (seam fix):** floor/wall *meshes* are 3.66 wide; GridMap `cell_size` and collision shapes stay 3.6. The 0.03 overlap was added to hide float32 precision cracks back when the world rendered at ≈ −18 000; now the façade centres the maze near the origin (≈ ±27), where float32 has ample precision, so that problem is gone and the overlap is merely **defensive/harmless**. World-space triplanar mapping still keeps the coplanar z-fight invisible.
+- **Wall rendering — environment kits (`REQ-0022`, US-22/F-51..F-53):** the GridMap Wall item (id 1) is now a **dark occluder + collision box only** (flat near-black `StandardMaterial3D`, no normal map) — collision and light-occlusion, unchanged geometry. The *visible* wall surface is kit-driven **instanced rock geometry**: `Chunk.Setup(coord, chunkData, EnvironmentKit kit)` places rocks per wall cell via `kit.PlaceRocks(cellCenterLocal, seed)` and batches the results into one `MultiMeshInstance3D` per rock prototype (≤ 8 draw calls/chunk). The kit comes from `MazeData.RegionEnvironment` ([Export] `EnvironmentId`, one value per region) resolved through `EnvironmentKitRegistry`; two kits exist — `SlotCanyonKit` (red-sand, tight/tall/near-vertical cliffs) and `RavineKit` (grey photoscan, tilted/wider-spread) — both built from `art/RockPack1/` meshes. Placement is **deterministic per world cell** (`Chunk.CellSeed(worldSeed, wx, wz)`, FNV-1a), so rocks don't change or flicker as chunks stream in/out. Rocks are visual-only (no collision) and may overhang the corridor. Details: [`requirements/REQ-0022-environment-kits/design.md`](./requirements/REQ-0022-environment-kits/design.md).
 
 ### Player controller (`src/Player.cs`)
 
@@ -160,6 +161,7 @@ Source `.blend` files live in `art/`, imported as `.glb`. Materials are separate
 | `art/AnimationLibrary_Godot_Standard.glb` | **Active** | Player: rigged humanoid + AnimationPlayer (46 clips) |
 | `art/old_kodak_camera.glb` | **Active** | 3D model for the camera item (US-13), seeded in inventory + dropped in world |
 | `art/ifrit.glb` | **Active** | Ifrit monster model (US-20); fiery humanoid demon with full anim set (Idle/Run/Attack/BeHit), spawned near start |
+| `art/RockPack1/` | **Active** | Arnklit "Godot Cliffs & Rocks Pack 1" (`v1_02`, non-HighRes) — bare `Cliff*` meshes + `Cliff_Material_Red_Sand.tres`/`Cliff_Material_Photoscan.tres` + `advanced_rock.gdshader`, instanced by `SlotCanyonKit`/`RavineKit` (REQ-0022) as wall rocks. `Boulder*`/`Rock*`/`Pile*` meshes in the pack are imported but not yet wired into a kit. |
 | `art/vintage_camera.glb` | Asset (unused in scene) | Alternate camera model candidate |
 | `art/mob.glb` | Asset (unused in scene) | Old enemy model; `Mob.cs`/`mob.tscn` stub superseded by `Monster`/`Ifrit` |
 | `art/player.glb` | **Deprecated** | Old sphere-based player; no longer in any scene |
