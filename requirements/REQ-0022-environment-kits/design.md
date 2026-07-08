@@ -23,12 +23,14 @@ code that keeps the player from falling through walls or seeing into the void.
 - **`src/EnvironmentId.cs`** — `enum EnvironmentId { SlotCanyon, Ravine }`.
 - **`src/RockPlacement.cs`** — `readonly struct RockPlacement { int PrototypeIndex; Transform3D Transform; }`, the unit a kit hands back per rock.
 - **`src/EnvironmentKit.cs`** — abstract base for all kits:
-  - `Mesh[] Prototypes`, `Material RockMaterial`, `float[] BaseScales`.
-  - `ComputeBaseScales()` — for each prototype, reads its local-space AABB height (`Mesh.GetAabb().Size.Y`) and derives a scale factor so the rock, unscaled by per-placement jitter, spans `MazeData.WallHeight` (30) — keeps prototypes of very different native sizes filling the wall consistently.
+  - `Mesh[] Prototypes`, `Material RockMaterial`, `float[] BaseScales`, tunable `FootprintFraction` (default 1.2).
+  - `LoadCliffPrototypes()` — shared loader for the 8 `Cliff_models_cliff{1..8}_mesh.res` bare meshes from `art/RockPack1/Models/meshes/` (both kits use the same set).
+  - `ComputeBaseScales()` — for each prototype, reads its local-space AABB and derives a **uniform** scale so the rock's **horizontal footprint** (`max(Size.X, Size.Z)`) spans `CellWorldSize * FootprintFraction` (≈ one corridor cell). Scaling is uniform (not stretched to `WallHeight`): the source cliffs are chunky ~1:1 blocks, so fitting width to a cell keeps natural proportions — stretching a single rock to 30 tall instead turned them into thin blades.
+  - `BuildStack(cellCenterLocal, seed, jitter, tiltMax, scaleMin, scaleMax, overlap)` — shared placement: stacks cell-footprint rocks up a vertical column from `y = 0` to `MazeData.WallHeight`, stepping `max(rockHeight * overlap, 1.0)` per layer (rocks overlap so the wall reads continuous), each with a random prototype, yaw, optional tilt, per-rock scale variance, and XZ jitter. Kits differ only in the params they pass. A guard caps the loop at 48 layers.
   - `abstract List<RockPlacement> PlaceRocks(Vector3 cellCenterLocal, ulong seed)` — the *only* place a concrete kit's behaviour differs.
   - `protected static RandomNumberGenerator Rng(ulong seed)` and `MakeTransform(pos, eulerRad, scale)` helpers shared by subclasses.
-- **`src/SlotCanyonKit.cs`** — loads the 8 `Cliff_models_cliff{1..8}_mesh.res` bare meshes from `art/RockPack1/Models/meshes/` as prototypes, `Cliff_Material_Red_Sand.tres` as the shared material. `PlaceRocks`: 2 rocks/cell, prototype chosen uniformly at random, yaw-only rotation (`0..Tau`), scale = `BaseScales[proto] * rand(0.95, 1.15)`, XZ jitter `±0.5` around the cell center — tight, tall, low-jitter → fluted slot-canyon look.
-- **`src/RavineKit.cs`** — same 8 prototypes, `Cliff_Material_Photoscan.tres` (grey) as the material. `PlaceRocks`: 2 rocks/cell, yaw **and** pitch/roll tilt (`±0.20` rad each), scale = `BaseScales[proto] * rand(0.65, 0.9)`, XZ jitter `±1.0` — broken, tilted, wider spread → open-ravine look.
+- **`src/SlotCanyonKit.cs`** — `Cliff_Material_Red_Sand.tres` as the shared material. `PlaceRocks` → `BuildStack(jitter 0.35, tiltMax 0, scale 0.9–1.2, overlap 0.6)` — tight, upright, low-jitter → fluted slot-canyon look.
+- **`src/RavineKit.cs`** — same 8 prototypes, `Cliff_Material_Photoscan.tres` (grey) as the material. `PlaceRocks` → `BuildStack(jitter 0.5, tiltMax 0.10 rad, scale 0.8–1.05, overlap 0.65)` — tilted, wider spread → open-ravine look.
 - **`src/EnvironmentKitRegistry.cs`** — `static EnvironmentKit Get(EnvironmentId id)`; lazily constructs and caches one kit instance per id in a `Dictionary<EnvironmentId, EnvironmentKit>` (prototypes/materials loaded once, not per chunk).
 - **`src/MazeData.cs`** — `[Export] public EnvironmentId RegionEnvironment = EnvironmentId.SlotCanyon;` (flip in the editor to A/B the two kits — the seam for a future `regionAddress -> EnvironmentId` map) and `public int WorldSeed { get; private set; }` (set from the region's generation seed in `_Ready`, logged alongside it).
 - **`src/ChunkManager.cs`** `LoadChunk` — resolves the kit once per chunk load: `var kit = EnvironmentKitRegistry.Get(maze.RegionEnvironment); chunk.Setup(chunkPos, chunkData, kit);`.
@@ -62,8 +64,8 @@ rock sequence for a cell is fully reproducible from `(WorldSeed, wx, wz)` alone.
 While iterating a chunk's 16×16 cells, `Chunk` accumulates `Transform3D`s per prototype index
 rather than emitting one node per rock. After the loop it emits **one `MultiMeshInstance3D` per
 non-empty prototype bucket** — at most `kit.Prototypes.Length` (8, for both current kits) draw
-calls per chunk, regardless of how many individual rock instances that bucket holds (2 rocks ×
-wall-cell-count per chunk). With the 3×3 = 9 active-chunk streaming window (`ChunkManager`,
+calls per chunk, regardless of how many individual rock instances that bucket holds (a vertical
+stack of ~8–12 rocks × wall-cell-count per chunk). With the 3×3 = 9 active-chunk streaming window (`ChunkManager`,
 `LoadDistance = 1`), this keeps total wall-rock draw calls in the tens, not the hundreds — the
 batching strategy the design spec's §7/§10 called for.
 
@@ -125,8 +127,10 @@ touching kit or chunk code.
   voxel/marching-cubes/SDF renderer swap was judged overkill for a grid maze. Instanced discrete
   rock meshes (this feature) were chosen instead.
 - **No rock LOD/decimation.** The design spec (§10 Risks) flags the pack's `Cliff*` meshes as
-  high-poly (photoscan-grade, ~130-210 KB each); no decimated LOD variants were produced — density
-  is instead kept low (2 rocks/wall cell) to manage the triangle budget.
+  high-poly (photoscan-grade, ~130-210 KB each); no decimated LOD variants were produced. A wall
+  cell now stacks ~8–12 rocks up its full height (each source cliff is only ~1 cell tall once
+  footprint-fitted, so a column is needed to cover the 30-unit wall), traded against the batching
+  (one MultiMesh per prototype) and a future filler-cell cull to manage the triangle budget.
 
 ## Links
 
