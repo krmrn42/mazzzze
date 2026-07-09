@@ -132,6 +132,44 @@ touching kit or chunk code.
   footprint-fitted, so a column is needed to cover the 30-unit wall), traded against the batching
   (one MultiMesh per prototype) and a future filler-cell cull to manage the triangle budget.
 
+## Per-region lighting (F-54)
+
+Lighting is a property of the kit, so the region's mood ships alongside its rock look.
+
+- **`src/LightingProfile.cs`** — a plain data class the kit hands over: sun (`SunVisible`,
+  `SunEnergy`, `SunColor`, `SunPitchDeg`, `SunYawDeg`), ambient (`AmbientColor`, `AmbientEnergy`
+  — `≤0` disables ambient entirely), sky (`SkyTopColor`, `SkyHorizonColor`, `SkyEnergy`), depth fog
+  (`FogEnabled`, `FogColor`, `FogDensity`), and the player torch (`HeadLightEnergy`,
+  `HeadLightColor`, `HeadLightRange`, `HeadLightAttenuation`, `HeadLightHeight` — local Y above the
+  player; raising it grazes close vertical walls dimmer while keeping the horizontal floor pool lit —
+  and `HeadLightShadow` — enables the omni cubemap shadow so rocks + wall occluder boxes block the
+  torch instead of it shining through them; off by default, on for DarkCanyon, costs a per-frame
+  shadow render).
+- **`EnvironmentKit.Lighting`** — `{ get; protected set; }`, defaulted to `new LightingProfile()`;
+  each kit's ctor assigns its own profile (DarkCanyon: sun+ambient off, near-black sky, black fog,
+  warm short-range torch · SlotCanyon: scorching warm sun, warm ambient, bright sky, dim torch ·
+  Ravine: soft cool sun, grey ambient/sky, faint haze, mid torch).
+- **`src/LightingController.cs`** (`Main/LightingController`, `Node`) — `[Export] NodePath`s to the
+  sun, `WorldEnvironment`, and `Player/HeadLight`. In `_Ready` it reads
+  `EnvironmentKitRegistry.Get(MazeData.Instance.RegionEnvironment).Lighting` and applies it: sets the
+  DirectionalLight3D visibility/energy/color/rotation; sets `Environment.AmbientLightSource` to
+  `Disabled` when `AmbientEnergy ≤ 0` else `Color`; casts `Environment.Sky.SkyMaterial` to
+  `ProceduralSkyMaterial` for the sky colors/energy; toggles `FogEnabled`/`FogLightColor`/`FogDensity`;
+  and sets the OmniLight3D energy/color/`OmniRange`/`OmniAttenuation`. Runs before the first frame,
+  so the stored `main.tscn`/`player.tscn` light values are only editor defaults (kept aligned to
+  DarkCanyon).
+
+**Why disabling ambient kills the "glow from below":** flat COLOR ambient adds a uniform term to
+every fragment regardless of surface orientation or occlusion (only the baked crevice-AO texture
+nudges it). Downward-facing rock undersides therefore received the same fill as the tops and read as
+lit from beneath. Disabling ambient (DarkCanyon) leaves only the directional torch, so undersides
+fall to black naturally.
+
+**Границы (scope/limits):** one profile per kit, applied once at `_Ready` (no runtime transitions
+between regions yet — there is only one resident region). Volumetric fog / god-rays around the torch
+not used (depth fog only). Glow/bloom, tonemap, and reflection source stay at the scene defaults —
+the controller does not touch them. Numbers are first-pass, tuned by playtest.
+
 ## Links
 
 Design spec:

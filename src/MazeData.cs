@@ -34,7 +34,7 @@ public partial class MazeData : Node
 	public Vector2I PlayerStartCell { get; private set; }
 
 	[Export]
-	public EnvironmentId RegionEnvironment = EnvironmentId.SlotCanyon;
+	public EnvironmentId RegionEnvironment = EnvironmentId.DarkCanyon;
 
 	public int WorldSeed { get; private set; }
 
@@ -98,6 +98,25 @@ public partial class MazeData : Node
 		if (region == null) return false;
 		var cell = new MgVector(wx, wz);
 		return region.Contains(cell) && region.CellAt(cell).IsPassable;
+	}
+
+	private const string TagWallAxisX = "MAZE2D_WALL_AXIS_X";
+	private const string TagWallAxisY = "MAZE2D_WALL_AXIS_Y";
+
+	public static WallAxis WallAxisAt(int wx, int wz)
+	{
+		var region = Instance?._region;
+		if (region == null) return WallAxis.None;
+		var cell = new MgVector(wx, wz);
+		if (!region.Contains(cell)) return WallAxis.None;
+		var tags = region.CellAt(cell).Tags;
+		if (tags == null) return WallAxis.None;
+		for (int i = 0; i < tags.Count; i++)
+		{
+			if (tags[i] == TagWallAxisX) return WallAxis.X;
+			if (tags[i] == TagWallAxisY) return WallAxis.Z;
+		}
+		return WallAxis.None;
 	}
 
 	// Генерация данных чанка: 0 = пол (коридор), 1 = стена.

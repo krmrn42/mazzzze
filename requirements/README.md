@@ -40,7 +40,7 @@
 | REQ-0019 | Базовый монстр (шаблон) | US-19 | F-39…F-43 | ✅ реализовано | [REQ-0019-base-monster/](./REQ-0019-base-monster/README.md) |
 | REQ-0020 | Ifrit (ифрит, контактный) | US-20 | F-44…F-46 | ✅ реализовано | [REQ-0019-base-monster/REQ-0020-base-monster-ifrit/](./REQ-0019-base-monster/REQ-0020-base-monster-ifrit/README.md) |
 | REQ-0021 | Теннисный мячик (бросок) | US-21 | F-47…F-50 | 🟡 запланировано | [REQ-0021-tennis-ball/](./REQ-0021-tennis-ball/README.md) |
-| REQ-0022 | Окружения-киты стен (скалы) | US-22 | F-51…F-53 | ✅ базово реализовано | [REQ-0022-environment-kits/](./REQ-0022-environment-kits/README.md) |
+| REQ-0022 | Окружения-киты стен (скалы) + освещение региона | US-22 | F-51…F-54 | ✅ базово реализовано | [REQ-0022-environment-kits/](./REQ-0022-environment-kits/README.md) |
 
 **Реализация (HOW):** [TECH_SPEC.md](./TECH_SPEC.md) — авторитетный технический справочник.
 

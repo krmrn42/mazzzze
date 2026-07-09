@@ -38,7 +38,6 @@ public partial class Chunk : Node3D
 				var cellType = chunkData[x, z];
 				var tileId = cellType switch
 				{
-					0 => 0,
 					1 => 1,
 					_ => -1,
 				};
@@ -51,8 +50,9 @@ public partial class Chunk : Node3D
 				ulong seed = CellSeed(worldSeed, wx, wz);
 				Vector3 center = gridmap.MapToLocal(new Vector3I(x, 0, z));
 				center.Y = 0.0f;
+				WallAxis axis = MazeData.WallAxisAt(wx, wz);
 
-				foreach (var p in kit.PlaceRocks(center, seed))
+				foreach (var p in kit.PlaceRocks(center, seed, axis))
 					buckets[p.PrototypeIndex].Add(p.Transform);
 			}
 		}

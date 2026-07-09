@@ -5,58 +5,56 @@ public abstract class EnvironmentKit
 {
     public Mesh[] Prototypes { get; protected set; }
     public Material RockMaterial { get; protected set; }
+    public LightingProfile Lighting { get; protected set; } = new LightingProfile();
     public float[] BaseScales { get; private set; }
+    public bool[] LongAxisIsX { get; private set; }
 
-    protected float FootprintFraction = 1.2f;
+    protected float FootprintFraction = 2.0f;
+
+    private static readonly int[] CliffIds = { 1, 2, 3, 4, 6, 7, 8 };
 
     protected void LoadCliffPrototypes()
     {
-        Prototypes = new Mesh[8];
-        for (int i = 0; i < 8; i++)
+        Prototypes = new Mesh[CliffIds.Length];
+        for (int i = 0; i < CliffIds.Length; i++)
         {
             Prototypes[i] = GD.Load<Mesh>(
-                $"res://art/RockPack1/Models/meshes/Cliff_models_cliff{i + 1}_mesh.res");
+                $"res://art/RockPack1/Models/meshes/Cliff_models_cliff{CliffIds[i]}_mesh.res");
         }
     }
 
     protected void ComputeBaseScales()
     {
         BaseScales = new float[Prototypes.Length];
+        LongAxisIsX = new bool[Prototypes.Length];
         for (int i = 0; i < Prototypes.Length; i++)
         {
             var size = Prototypes[i].GetAabb().Size;
-            float horiz = Mathf.Max(size.X, size.Z);
-            BaseScales[i] = horiz > 0.001f
-                ? MazeData.CellWorldSize * FootprintFraction / horiz
+            float longest = Mathf.Max(size.X, Mathf.Max(size.Y, size.Z));
+            BaseScales[i] = longest > 0.001f
+                ? MazeData.CellWorldSize * FootprintFraction / longest
                 : 1.0f;
+            LongAxisIsX[i] = size.X >= size.Z;
         }
     }
 
-    public abstract List<RockPlacement> PlaceRocks(Vector3 cellCenterLocal, ulong seed);
+    public abstract List<RockPlacement> PlaceRocks(
+        Vector3 cellCenterLocal, ulong seed, WallAxis axis);
 
-    protected List<RockPlacement> BuildStack(
-        Vector3 cellCenterLocal, ulong seed,
-        float jitter, float tiltMax, float scaleMin, float scaleMax, float overlap)
+    protected List<RockPlacement> SingleCenteredRock(
+        Vector3 cellCenterLocal, ulong seed, WallAxis axis)
     {
-        var rng = Rng(seed);
-        var list = new List<RockPlacement>();
-        float y = 0.0f;
-        int guard = 0;
-        while (y < MazeData.WallHeight && guard++ < 48)
+        int proto = (int)(seed % (ulong)Prototypes.Length);
+        float s = BaseScales[proto];
+        float yaw = 0.0f;
+        if (axis != WallAxis.None && LongAxisIsX[proto] != (axis == WallAxis.X))
+            yaw = Mathf.Pi / 2.0f;
+        return new List<RockPlacement>
         {
-            int proto = (int)(rng.Randi() % (uint)Prototypes.Length);
-            float s = BaseScales[proto] * rng.RandfRange(scaleMin, scaleMax);
-            float rockH = Prototypes[proto].GetAabb().Size.Y * s;
-            float yaw = rng.RandfRange(0.0f, Mathf.Tau);
-            float pitch = tiltMax > 0.0f ? rng.RandfRange(-tiltMax, tiltMax) : 0.0f;
-            float roll = tiltMax > 0.0f ? rng.RandfRange(-tiltMax, tiltMax) : 0.0f;
-            var pos = cellCenterLocal + new Vector3(
-                rng.RandfRange(-jitter, jitter), y, rng.RandfRange(-jitter, jitter));
-            list.Add(new RockPlacement(proto,
-                MakeTransform(pos, new Vector3(pitch, yaw, roll), new Vector3(s, s, s))));
-            y += Mathf.Max(rockH * overlap, 1.0f);
-        }
-        return list;
+            new RockPlacement(proto,
+                MakeTransform(cellCenterLocal, new Vector3(0.0f, yaw, 0.0f),
+                    new Vector3(s, s, s))),
+        };
     }
 
     protected static RandomNumberGenerator Rng(ulong seed)

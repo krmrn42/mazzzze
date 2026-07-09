@@ -7,7 +7,10 @@ render_mode diffuse_burley;
 uniform vec4 albedo_primary : source_color = vec4(1.0);
 uniform vec4 albedo_secondary : source_color = vec4(1.0);
 uniform float albedo_curvature : hint_range(0.0, 1.0) = 0.15;
+uniform float curvature_gamma : hint_range(0.1, 4.0) = 1.0;
 uniform float roughness_curvature : hint_range(0.0, 1.0) = 0.15;
+uniform float roughness_boost : hint_range(0.0, 1.0) = 0.0;
+uniform float specular_amount : hint_range(0.0, 1.0) = 0.5;
 uniform float normal_strength_primary : hint_range(0.0, 4.0) = 1.0;
 uniform float normal_strength_secondary : hint_range(0.0, 4.0) = 1.0;
 uniform float ao_lifght_affect : hint_range(0.0, 1.0) = 0.0;
@@ -163,11 +166,14 @@ void fragment() {
 	}
 	mask = clamp((height_tex - (sec_height_tex * mask + secondary_height * mask)) / -0.2, 0.0, 1.0);
 	vec4 sec_albedo_tex = triplanar_texture(texture_secondary_albedo, power_normal, world_pos * secondary_detail_scale);
-	vec3 base_albedo = blend_screen_3(vec3(occlussion_curvature_mesh_tex.g), albedo_primary.rgb * albedo_tex.rgb, albedo_curvature);
+	float curv = pow(occlussion_curvature_mesh_tex.g, curvature_gamma);
+	vec3 base_albedo = blend_screen_3(vec3(curv), albedo_primary.rgb * albedo_tex.rgb, albedo_curvature);
 	ALBEDO = mix(base_albedo, sec_albedo_tex.rgb * albedo_secondary.rgb, mask);
 	
 	float base_roughness = blend_screen(occlussion_curvature_mesh_tex.g, orm_tex.g, roughness_curvature);
 	ROUGHNESS = mix(base_roughness, sec_orm_tex.g, mask);
+	ROUGHNESS = mix(ROUGHNESS, 1.0, roughness_boost);
+	SPECULAR = specular_amount;
 	vec3 base_normal_map = triplanar_texture(texture_detail_normal, power_normal, world_pos * detail_scale).rgb;
 	base_normal_map = adjust_normal_map_strength(base_normal_map, normal_strength_primary);
 	vec3 secondary_normal_map = triplanar_texture(texture_secondary_normal, power_normal, world_pos * secondary_detail_scale).rgb;

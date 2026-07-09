@@ -12,7 +12,8 @@ public static class EnvironmentKitRegistry
             {
                 EnvironmentId.SlotCanyon => new SlotCanyonKit(),
                 EnvironmentId.Ravine => new RavineKit(),
-                _ => new SlotCanyonKit(),
+                EnvironmentId.DarkCanyon => new DarkCanyonKit(),
+                _ => new DarkCanyonKit(),
             };
             _kits[id] = kit;
         }
